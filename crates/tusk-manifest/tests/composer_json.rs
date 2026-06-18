@@ -7,6 +7,7 @@ use tusk_manifest::ComposerJson;
 
 const MINIMAL: &str = include_str!("../../../fixtures/manifest/minimal.json");
 const MULTIPATH_PSR4: &str = include_str!("../../../fixtures/manifest/multipath-psr4.json");
+const AUTOLOAD_FILES: &str = include_str!("../../../fixtures/manifest/autoload-files.json");
 
 #[test]
 fn from_str_minimal_succeeds_and_exposes_php_require() {
@@ -78,4 +79,24 @@ fn from_str_parses_multipath_psr4_autoload() {
         .expect("Acme\\Tests\\ value must be a JSON array of paths");
     let tests_paths: Vec<&str> = tests.iter().filter_map(serde_json::Value::as_str).collect();
     assert_eq!(tests_paths, vec!["tests/Core/", "tests/Integration/"]);
+}
+
+#[test]
+fn from_str_parses_autoload_files_array() {
+    let parsed =
+        ComposerJson::from_str(AUTOLOAD_FILES).expect("autoload-files.json should parse");
+
+    let files = parsed
+        .autoload
+        .get("files")
+        .expect("autoload should have a 'files' section")
+        .as_array()
+        .expect("autoload.files should be a JSON array");
+
+    let file_paths: Vec<&str> = files.iter().filter_map(serde_json::Value::as_str).collect();
+    assert_eq!(
+        file_paths,
+        vec!["src/helpers.php", "src/polyfills.php"],
+        "the order of files must be preserved"
+    );
 }

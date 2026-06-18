@@ -1,0 +1,14 @@
+{
+    "name": "acme/helpers",
+    "description": "A package whose autoload.files declares a list of eager-required scripts.",
+    "type": "library",
+    "require": {
+        "php": "^8.1"
+    },
+    "autoload": {
+        "files": [
+            "src/helpers.php",
+            "src/polyfills.php"
+        ]
+    }
+}
