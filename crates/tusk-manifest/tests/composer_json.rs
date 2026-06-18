@@ -101,3 +101,45 @@ fn from_str_parses_autoload_files_array() {
         "the order of files must be preserved"
     );
 }
+
+#[test]
+fn from_str_parses_classmap_and_psr0_autoload() {
+    let parsed =
+        ComposerJson::from_str(CLASSMAP_PSR0).expect("classmap-psr0.json should parse");
+
+    // psr-0: a JSON object mapping prefix -> string path.
+    let psr0 = parsed
+        .autoload
+        .get("psr-0")
+        .expect("autoload.psr-0 should be present")
+        .as_object()
+        .expect("autoload.psr-0 must be a JSON object");
+    assert_eq!(
+        psr0.get("Zend_").and_then(serde_json::Value::as_str),
+        Some("library/")
+    );
+
+    // classmap: a JSON array of path strings (directories or single files).
+    let classmap = parsed
+        .autoload
+        .get("classmap")
+        .expect("autoload.classmap should be present")
+        .as_array()
+        .expect("autoload.classmap must be a JSON array");
+    let classmap_paths: Vec<&str> = classmap
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .collect();
+    assert_eq!(classmap_paths, vec!["src/Legacy", "ext/legacy/Compat.php"]);
+
+    // exclude-from-classmap: also a JSON array of strings.
+    let excluded = parsed
+        .autoload
+        .get("exclude-from-classmap")
+        .expect("autoload.exclude-from-classmap should be present")
+        .as_array()
+        .expect("autoload.exclude-from-classmap must be a JSON array");
+    let excluded_paths: Vec<&str> =
+        excluded.iter().filter_map(serde_json::Value::as_str).collect();
+    assert_eq!(excluded_paths, vec!["src/Legacy/Internal"]);
+}
