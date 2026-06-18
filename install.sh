@@ -13,6 +13,8 @@
 #                    Set to e.g. /usr/local to install into /usr/local/bin
 #                    (requires write permission to that directory)
 #   TUSK_REPO        Override the GitHub repo (default: lschvn/tusk)
+#   TUSK_RELEASE_URL Override the full download URL (testing/local use)
+#                    When set, TUSK_VERSION and TUSK_REPO are ignored.
 #
 # Supported platforms (downloaded as prebuilt binaries):
 #   - Linux  x86_64
@@ -70,7 +72,9 @@ ARCHIVE="tusk-${TARGET}.tar.gz"
 # Resolve download URL
 # ---------------------------------------------------------------------------
 
-if [ "${VERSION}" = "latest" ]; then
+if [ -n "${TUSK_RELEASE_URL:-}" ]; then
+    DOWNLOAD_URL="${TUSK_RELEASE_URL}"
+elif [ "${VERSION}" = "latest" ]; then
     DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${ARCHIVE}"
 else
     DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${ARCHIVE}"
