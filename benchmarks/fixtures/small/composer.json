@@ -1,0 +1,10 @@
+{
+    "name": "bench/small",
+    "description": "Small PHP project: logger + PSR interfaces",
+    "type": "project",
+    "require": {
+        "php": "^8.1",
+        "psr/log": "^3.0",
+        "psr/container": "^2.0"
+    }
+}

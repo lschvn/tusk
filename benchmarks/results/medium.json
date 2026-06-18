@@ -1,0 +1,70 @@
+{
+  "direct_deps": 18,
+  "environment": {
+    "composer_version": "Composer version 2.10.1 2026-06-04 10:25:59",
+    "cpu_count": "12",
+    "cpu_model": "QEMU Virtual CPU version 2.5+",
+    "kernel": "6.8.0-124-generic",
+    "memory": "Mem:            23Gi       1,8Gi        16Gi       392Ki       5,4Gi        21Gi",
+    "os": "Ubuntu 24.04.4 LTS",
+    "php_version": "PHP 8.3.13 (cli) (built: Nov  1 2024 06:38:49) (NTS)\nCopyright (c) The PHP Group\nZend Engine v4.3.13, Copyright (c) Zend Technologies",
+    "tusk_commit": "a2d9b30ae6fa217627c4e47351dab173f23cc47f",
+    "tusk_commit_short": "a2d9b30",
+    "tusk_version": "tusk 0.1.0"
+  },
+  "fixture": "medium",
+  "fixture_path": "/home/louis/work/tusk/benchmarks/fixtures/medium",
+  "summary": {
+    "cold_speedup": null,
+    "composer_success": true,
+    "notes": [
+      "tusk install FAILED \u2014 see tools.tusk.error"
+    ],
+    "tusk_success": false,
+    "warm_speedup_avg": null,
+    "warm_speedup_min": null
+  },
+  "tools": {
+    "composer": {
+      "cold_seconds": 2.99,
+      "composer_cache_dir": "/home/louis/.composer/cache",
+      "disk_bytes": 15716497,
+      "error": null,
+      "packages_installed": 75,
+      "success": true,
+      "tool": "composer",
+      "total_deps_resolved": 75,
+      "tusk_cache_dir": "/home/louis/.cache/tusk",
+      "warm_avg_seconds": 0.267,
+      "warm_max_seconds": 0.296,
+      "warm_min_seconds": 0.252,
+      "warm_seconds": [
+        0.296,
+        0.253,
+        0.252
+      ]
+    },
+    "tusk": {
+      "cold_seconds": 0.085,
+      "composer_cache_dir": "/home/louis/.composer/cache",
+      "disk_bytes": 0,
+      "error": [
+        "Error: dependency resolution failed",
+        "",
+        "Caused by:",
+        "    0: registry error for illuminate/database: parse error: missing dist field",
+        "    1: parse error: missing dist field"
+      ],
+      "packages_installed": 0,
+      "success": false,
+      "tool": "tusk",
+      "total_deps_resolved": null,
+      "tusk_cache_dir": "/home/louis/.cache/tusk",
+      "warm_avg_seconds": null,
+      "warm_max_seconds": null,
+      "warm_min_seconds": null,
+      "warm_seconds": []
+    }
+  },
+  "warm_runs": 3
+}

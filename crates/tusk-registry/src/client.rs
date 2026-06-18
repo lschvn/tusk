@@ -83,9 +83,15 @@ impl PackagistClient {
         while base.ends_with('/') {
             base.pop();
         }
+        // Set a User-Agent so download endpoints that require one
+        // (e.g. codeload.github.com) don't return 403 Forbidden.
+        let http = reqwest::Client::builder()
+            .user_agent("tusk/0.1.0 (+https://github.com/lschvn/tusk)")
+            .build()
+            .expect("reqwest client");
         Self {
             base_url: base,
-            http: reqwest::Client::new(),
+            http,
             cache: std::sync::Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -163,19 +169,26 @@ fn parse_p2_response(
             .and_then(|v| v.as_str())
             .ok_or_else(|| RegistryError::Parse("missing version field".to_string()))?;
 
-        let version = Version::parse(version_str)
-            .map_err(|e| RegistryError::Parse(format!("bad version {version_str:?}: {e}")))?;
+        // Skip versions we can't parse (dev branches with custom stability suffixes,
+        // weird version strings, etc.). These are typically source-only installs.
+        let Ok(version) = Version::parse(version_str) else {
+            continue;
+        };
 
-        let dist_obj = entry
-            .get("dist")
-            .ok_or_else(|| RegistryError::Parse("missing dist field".to_string()))?;
+        // Skip versions without a dist field (dev branches, source-only entries).
+        // These are git-source installs, which are out of scope for Phase 1 (dist-only).
+        let Some(dist_obj) = entry.get("dist") else {
+            continue;
+        };
+
+        // Also skip if dist.url is empty (defensive — should not happen with a dist object)
+        let dist_url = dist_obj.get("url").and_then(|v| v.as_str()).unwrap_or("");
+        if dist_url.is_empty() {
+            continue;
+        }
 
         let dist = DistRef {
-            url: dist_obj
-                .get("url")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
+            url: dist_url.to_string(),
             shasum: dist_obj
                 .get("shasum")
                 .and_then(|v| v.as_str())

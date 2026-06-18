@@ -27,7 +27,10 @@ impl Downloader {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            client: reqwest::Client::builder().build().expect("reqwest client"),
+            client: reqwest::Client::builder()
+                .user_agent("tusk/0.1.0 (+https://github.com/lschvn/tusk)")
+                .build()
+                .expect("reqwest client"),
         }
     }
 
