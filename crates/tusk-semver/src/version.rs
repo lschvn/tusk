@@ -64,7 +64,14 @@ pub struct Version {
 
 impl Version {
     pub fn parse(s: &str) -> Result<Self, VersionError> {
-        let mut parts = s.split('.');
+        let (is_v_prefixed, body) = if let Some(stripped) = s.strip_prefix('v') {
+            (true, stripped)
+        } else if let Some(stripped) = s.strip_prefix('V') {
+            (true, stripped)
+        } else {
+            (false, s)
+        };
+        let mut parts = body.split('.');
         let major: u32 = parts
             .next()
             .and_then(|p| p.parse().ok())
@@ -85,7 +92,7 @@ impl Version {
             stability: Stability::Stable,
             stability_n: None,
             dev_branch: None,
-            is_v_prefixed: false,
+            is_v_prefixed,
         })
     }
 
