@@ -1,10 +1,15 @@
 name: release
 
-# Build prebuilt `tusk` binaries for every supported platform and publish them
-# as assets on a GitHub Release. These assets are what `install.sh` downloads.
+# Build prebuilt `tusk` binaries for the supported platforms and publish them
+# as assets on a GitHub Release. `install.sh` downloads these assets.
 #
-# Trigger either by pushing a version tag (e.g. `git push origin v0.1.0`) or by
-# running this workflow manually from the Actions tab with a tag name.
+# Trigger by pushing a version tag (e.g. `git push origin v0.1.0`) or by running
+# this workflow manually from the Actions tab.
+#
+# Build notes:
+# - `tusk` links dynamically against libcurl + libssl + libarchive (system libs).
+# - The `curl-sys` build script invokes `pkg-config` to locate these libraries,
+#   so the matching `-dev` packages must be installed before `cargo build`.
 
 on:
   push:
@@ -21,8 +26,6 @@ permissions:
   contents: write
 
 jobs:
-  # Resolve the release tag and, for manual runs, create it if needed so the
-  # build jobs have a tag to attach their assets to.
   prepare:
     runs-on: ubuntu-latest
     outputs:
@@ -49,40 +52,88 @@ jobs:
           fi
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
-  upload-assets:
-    needs: prepare
+  build:
     name: ${{ matrix.target }}
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
         include:
-          - target: x86_64-unknown-linux-musl
+          - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-          - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest
+            archive: tusk-x86_64-unknown-linux-gnu
           - target: x86_64-apple-darwin
             os: macos-latest
-          - target: aarch64-apple-darwin
-            os: macos-latest
+            archive: tusk-x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: refs/tags/${{ needs.prepare.outputs.tag }}
 
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install system deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            libarchive-dev \
+            pkg-config
 
-      # Builds with `cross` when cross-compilation is required (musl, aarch64),
-      # produces tusk-<target>.tar.gz plus a matching .sha256, and uploads both
-      # to the release for the tag (creating the release if necessary).
-      - name: Build and upload
-        uses: taiki-e/upload-rust-binary-action@v1
+      - name: Install Rust (stable) + target
+        uses: dtolnay/rust-toolchain@stable
         with:
-          bin: tusk
-          target: ${{ matrix.target }}
-          archive: $bin-$target
-          tar: unix
-          checksum: sha256
-          ref: refs/tags/${{ needs.prepare.outputs.tag }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-cargo-
+
+      - name: Build release binary
+        run: cargo build --release --bin tusk --target ${{ matrix.target }}
+
+      - name: Strip binary (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          BIN="target/${{ matrix.target }}/release/tusk"
+          strip "${BIN}"
+          ls -la "${BIN}"
+
+      - name: Strip binary (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          BIN="target/${{ matrix.target }}/release/tusk"
+          strip "${BIN}"
+          ls -la "${BIN}"
+
+      - name: Package tarball
+        run: |
+          set -euo pipefail
+          STAGE="stage-${{ matrix.archive }}"
+          mkdir -p "${STAGE}"
+          BIN="target/${{ matrix.target }}/release/tusk"
+          cp "${BIN}" "${STAGE}/tusk"
+          chmod +x "${STAGE}/tusk"
+          cp README.md "${STAGE}/"
+          cp LICENSE "${STAGE}/" 2>/dev/null || true
+          tar -C "${STAGE}" -czf "${{ matrix.archive }}.tar.gz" .
+          sha256sum "${{ matrix.archive }}.tar.gz" > "${{ matrix.archive }}.tar.gz.sha256"
+          ls -la "${{ matrix.archive }}.tar.gz"
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          files: |
+            ${{ matrix.archive }}.tar.gz
+            ${{ matrix.archive }}.tar.gz.sha256
+          fail_on_unmatched_files: true
+          generate_release_notes: true

@@ -17,6 +17,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # `tusk` links dynamically against libcurl + libssl + libarchive.
+      # The build script invokes pkg-config to find these — install dev headers
+      # so the test build (which compiles the libs) succeeds.
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            libarchive-dev \
+            pkg-config
+
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
         with:

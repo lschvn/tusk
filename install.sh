@@ -1,329 +1,175 @@
 #!/usr/bin/env bash
 #
-# Tusk installer — a fast PHP toolchain in Rust.
+# tusk installer — downloads the latest prebuilt tusk binary for Linux x86_64
+# and installs it to ~/.tusk/bin, then adds that directory to your PATH.
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/lschvn/tusk/main/install.sh | bash
-#   wget -qO- https://raw.githubusercontent.com/lschvn/tusk/main/install.sh | bash
 #
-# Install a specific version:
-#   curl -fsSL .../install.sh | bash -s v0.1.0
-#   TUSK_VERSION=v0.1.0 curl -fsSL .../install.sh | bash
+# Environment variables:
+#   TUSK_VERSION     Version to install (default: latest)
+#                    Examples: v0.1.0, latest
+#   TUSK_INSTALL     Install directory (default: ~/.tusk)
+#                    Set to e.g. /usr/local to install into /usr/local/bin
+#                    (requires write permission to that directory)
+#   TUSK_REPO        Override the GitHub repo (default: lschvn/tusk)
 #
-# Install to a custom location (default: ~/.tusk):
-#   TUSK_INSTALL=/opt/tusk curl -fsSL .../install.sh | bash
+# Supported platforms (downloaded as prebuilt binaries):
+#   - Linux  x86_64
 #
-# The script downloads a prebuilt binary for your platform from GitHub
-# Releases. If no prebuilt binary exists for your platform, it falls back
-# to building from source with `cargo` (requires a Rust toolchain).
+# On other platforms, or if no binary is found, the installer prints a
+# message pointing to the build-from-source instructions.
+#
+# This script is idempotent: re-running it upgrades tusk in place.
 
 set -euo pipefail
 
-# --- configuration ----------------------------------------------------------
+REPO="${TUSK_REPO:-lschvn/tusk}"
+VERSION="${TUSK_VERSION:-latest}"
+INSTALL_ROOT="${TUSK_INSTALL:-$HOME/.tusk}"
+BIN_DIR="${INSTALL_ROOT%/}/bin"
 
-REPO="lschvn/tusk"
-BIN_NAME="tusk"
-
-INSTALL_DIR="${TUSK_INSTALL:-${HOME}/.tusk}"
-BIN_DIR="${INSTALL_DIR}/bin"
-EXE="${BIN_DIR}/${BIN_NAME}"
-
-# Version can come from $1, $TUSK_VERSION, or default to "latest".
-VERSION="${1:-${TUSK_VERSION:-latest}}"
-
-# --- pretty output ----------------------------------------------------------
-
-if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
-    Color_Off='\033[0m'
-    Bold='\033[1m'
-    Red='\033[0;31m'
-    Green='\033[0;32m'
-    Yellow='\033[0;33m'
-    Blue='\033[0;34m'
-    Dim='\033[0;2m'
-else
-    Color_Off='' Bold='' Red='' Green='' Yellow='' Blue='' Dim=''
-fi
-
-info() { printf '%b\n' "${Dim}>${Color_Off} $*"; }
-success() { printf '%b\n' "${Green}✓${Color_Off} $*"; }
-warn() { printf '%b\n' "${Yellow}!${Color_Off} $*" >&2; }
-error() {
-    printf '%b\n' "${Red}error${Color_Off}: $*" >&2
-    exit 1
-}
-
-# --- helpers ----------------------------------------------------------------
-
-has() { command -v "$1" >/dev/null 2>&1; }
-
-# Download $1 to stdout (or to file $2 if given). Uses curl, falls back to wget.
-download() {
-    local url="$1" out="${2:-}"
-    if has curl; then
-        if [ -n "$out" ]; then
-            curl -fsSL --proto '=https' --tlsv1.2 -o "$out" "$url"
-        else
-            curl -fsSL --proto '=https' --tlsv1.2 "$url"
-        fi
-    elif has wget; then
-        if [ -n "$out" ]; then
-            wget -qO "$out" "$url"
-        else
-            wget -qO- "$url"
-        fi
-    else
-        error "neither 'curl' nor 'wget' is installed; cannot download."
-    fi
-}
-
-# Resolve "latest" to a concrete tag by following the GitHub redirect.
-# This avoids the rate-limited / auth-gated api.github.com endpoint.
-resolve_latest() {
-    local effective
-    if has curl; then
-        effective="$(curl -fsSL -o /dev/null -w '%{url_effective}' \
-            "https://github.com/${REPO}/releases/latest")"
-    elif has wget; then
-        effective="$(wget -q -S --max-redirect=10 -O /dev/null \
-            "https://github.com/${REPO}/releases/latest" 2>&1 \
-            | awk '/^  Location: / {print $2}' | tail -n1)"
-    else
-        error "neither 'curl' nor 'wget' is installed; cannot resolve version."
-    fi
-    # ".../releases/tag/vX.Y.Z" -> "vX.Y.Z"
-    case "$effective" in
-        */tag/*) printf '%s' "${effective##*/tag/}" ;;
-        *) printf '' ;;
-    esac
-}
-
-# Verify the sha256 of $1 against the checksum file at URL $2 (best effort).
-verify_checksum() {
-    local file="$1" sums_url="$2" expected actual sum_tool
-    if has sha256sum; then
-        sum_tool="sha256sum"
-    elif has shasum; then
-        sum_tool="shasum -a 256"
-    else
-        warn "no sha256 tool found; skipping checksum verification."
-        return 0
-    fi
-
-    expected="$(download "$sums_url" 2>/dev/null | awk '{print $1}' | head -n1 || true)"
-    if [ -z "$expected" ]; then
-        warn "checksum file unavailable; skipping verification."
-        return 0
-    fi
-
-    actual="$(${sum_tool} "$file" | awk '{print $1}')"
-    if [ "$expected" != "$actual" ]; then
-        error "checksum mismatch for $(basename "$file")\n  expected: ${expected}\n  actual:   ${actual}"
-    fi
-    success "Checksum verified."
-}
-
-# --- platform detection -----------------------------------------------------
+# ---------------------------------------------------------------------------
+# Platform detection
+# ---------------------------------------------------------------------------
 
 detect_target() {
     local os arch
     os="$(uname -s)"
     arch="$(uname -m)"
 
-    case "$os" in
-        Linux) os="unknown-linux-musl" ;;
-        Darwin) os="apple-darwin" ;;
-        *) error "unsupported operating system: ${os}" ;;
-    esac
-
-    case "$arch" in
-        x86_64 | amd64) arch="x86_64" ;;
-        arm64 | aarch64) arch="aarch64" ;;
-        *) error "unsupported architecture: ${arch}" ;;
-    esac
-
-    printf '%s-%s' "$arch" "$os"
-}
-
-# --- install strategies -----------------------------------------------------
-
-install_from_release() {
-    local target="$1" tag="$2"
-    local asset="${BIN_NAME}-${target}.tar.gz"
-    local base="${TUSK_BASE_URL:-https://github.com/${REPO}/releases/download}/${tag}"
-    local tmp
-    tmp="$(mktemp -d)"
-    # shellcheck disable=SC2064
-    trap "rm -rf '${tmp}'" RETURN
-
-    info "Downloading ${Bold}${asset}${Color_Off} (${tag})..."
-    if ! download "${base}/${asset}" "${tmp}/${asset}" 2>/dev/null; then
-        return 1
-    fi
-
-    verify_checksum "${tmp}/${asset}" "${base}/${asset}.sha256"
-
-    info "Extracting..."
-    tar -xzf "${tmp}/${asset}" -C "${tmp}"
-
-    local found
-    found="$(find "${tmp}" -type f -name "${BIN_NAME}" | head -n1)"
-    [ -n "$found" ] || error "archive did not contain a '${BIN_NAME}' binary."
-
-    mkdir -p "${BIN_DIR}"
-    install -m 0755 "$found" "${EXE}"
-    return 0
-}
-
-install_from_source() {
-    local tag="$1"
-    has cargo || error \
-        "no prebuilt binary for your platform and 'cargo' is not installed.\n  Install Rust from https://rustup.rs and re-run, or build manually:\n    git clone https://github.com/${REPO} && cd ${BIN_NAME} && cargo install --path crates/tusk-cli --root \"${INSTALL_DIR}\""
-
-    warn "No prebuilt binary available — building from source with cargo."
-    info "This may take a few minutes..."
-
-    local ref_args=()
-    if [ -n "$tag" ] && [ "$tag" != "latest" ]; then
-        ref_args=(--tag "$tag")
-    fi
-
-    cargo install \
-        --git "https://github.com/${REPO}" \
-        "${ref_args[@]+"${ref_args[@]}"}" \
-        --root "${INSTALL_DIR}" \
-        --force \
-        "${BIN_NAME}"
-}
-
-# --- PATH wiring ------------------------------------------------------------
-
-# Append an export line to a shell rc file if the bin dir isn't already there.
-add_path_posix() {
-    local rc="$1"
-    [ -n "$rc" ] || return 0
-    if [ -f "$rc" ] && grep -qF "${BIN_DIR}" "$rc"; then
-        return 0
-    fi
-    {
-        printf '\n# tusk\n'
-        printf 'export PATH="%s:$PATH"\n' "${BIN_DIR}"
-    } >>"$rc"
-    info "Added ${BIN_DIR} to PATH in ${Bold}${rc}${Color_Off}"
-}
-
-add_path_fish() {
-    local rc="${XDG_CONFIG_HOME:-${HOME}/.config}/fish/config.fish"
-    if [ -f "$rc" ] && grep -qF "${BIN_DIR}" "$rc"; then
-        return 0
-    fi
-    mkdir -p "$(dirname "$rc")"
-    {
-        printf '\n# tusk\n'
-        printf 'fish_add_path "%s"\n' "${BIN_DIR}"
-    } >>"$rc"
-    info "Added ${BIN_DIR} to PATH in ${Bold}${rc}${Color_Off}"
-}
-
-setup_path() {
-    # Already reachable on PATH? Nothing to do.
-    case ":${PATH}:" in
-        *":${BIN_DIR}:"*) return 0 ;;
-    esac
-
-    local shell_name
-    shell_name="$(basename "${SHELL:-}")"
-
-    case "$shell_name" in
-        bash)
-            add_path_posix "${HOME}/.bashrc"
-            # macOS login shells read .bash_profile, not .bashrc.
-            if [ "$(uname -s)" = "Darwin" ]; then
-                add_path_posix "${HOME}/.bash_profile"
-            fi
+    case "${os}" in
+        Linux)
+            case "${arch}" in
+                x86_64|amd64) echo "x86_64-unknown-linux-gnu" ;;
+                aarch64|arm64) echo "aarch64-unknown-linux-gnu" ;;
+                *) return 1 ;;
+            esac
             ;;
-        zsh)
-            add_path_posix "${ZDOTDIR:-${HOME}}/.zshrc"
+        Darwin)
+            case "${arch}" in
+                x86_64) echo "x86_64-apple-darwin" ;;
+                arm64|aarch64) echo "aarch64-apple-darwin" ;;
+                *) return 1 ;;
+            esac
             ;;
-        fish)
-            add_path_fish
-            ;;
-        *)
-            add_path_posix "${HOME}/.profile"
-            ;;
+        *) return 1 ;;
     esac
 }
 
-# --- main -------------------------------------------------------------------
+if ! TARGET="$(detect_target)"; then
+    echo "ERROR: tusk does not ship a prebuilt binary for $(uname -s)/$(uname -m)." >&2
+    echo "Build from source instead:" >&2
+    echo "  cargo install --git https://github.com/${REPO} --bin tusk" >&2
+    exit 1
+fi
 
-main() {
-    case "${1:-}" in
-        -h | --help)
-            cat <<EOF
-Tusk installer — a fast PHP toolchain in Rust.
+ARCHIVE="tusk-${TARGET}.tar.gz"
 
-Usage:
-  install.sh [VERSION]
+# ---------------------------------------------------------------------------
+# Resolve download URL
+# ---------------------------------------------------------------------------
 
-Examples:
-  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash
-  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s v0.1.0
+if [ "${VERSION}" = "latest" ]; then
+    DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${ARCHIVE}"
+else
+    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${ARCHIVE}"
+fi
 
-Environment variables:
-  TUSK_VERSION   Version/tag to install (default: latest)
-  TUSK_INSTALL   Install directory (default: \$HOME/.tusk)
-  NO_COLOR       Disable colored output
-EOF
-            exit 0
-            ;;
-    esac
+# ---------------------------------------------------------------------------
+# Download + extract
+# ---------------------------------------------------------------------------
 
-    [ -n "${HOME:-}" ] || error "\$HOME is not set; cannot determine install location."
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "${TMPDIR}"' EXIT
 
-    printf '%b\n' "${Blue}${Bold}🐘 Installing Tusk${Color_Off} ${Dim}— a fast PHP toolchain in Rust${Color_Off}"
+echo "Downloading tusk ${VERSION} (${TARGET})..."
+echo "  from: ${DOWNLOAD_URL}"
+echo "  to:   ${BIN_DIR}"
 
-    local target tag
-    target="$(detect_target)"
-    info "Platform: ${Bold}${target}${Color_Off}"
-
-    if [ "$VERSION" = "latest" ]; then
-        tag="$(resolve_latest || true)"
-        if [ -n "$tag" ]; then
-            info "Latest release: ${Bold}${tag}${Color_Off}"
-        else
-            warn "Could not resolve the latest release tag."
-        fi
+if ! curl -fsSL --retry 3 --connect-timeout 15 -o "${TMPDIR}/${ARCHIVE}" "${DOWNLOAD_URL}"; then
+    echo "" >&2
+    echo "ERROR: download failed." >&2
+    if [ "${VERSION}" = "latest" ]; then
+        echo "  Check that a release exists at https://github.com/${REPO}/releases" >&2
     else
-        tag="$VERSION"
-        info "Requested version: ${Bold}${tag}${Color_Off}"
+        echo "  Check that tag ${VERSION} exists at https://github.com/${REPO}/releases/tag/${VERSION}" >&2
     fi
+    echo "  Or build from source: cargo install --git https://github.com/${REPO} --bin tusk" >&2
+    exit 1
+fi
 
-    # Prefer a prebuilt binary; fall back to building from source.
-    if [ -n "$tag" ] && install_from_release "$target" "$tag"; then
-        :
+tar -xzf "${TMPDIR}/${ARCHIVE}" -C "${TMPDIR}"
+
+if [ ! -f "${TMPDIR}/tusk" ]; then
+    echo "ERROR: archive did not contain a 'tusk' binary" >&2
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Install
+# ---------------------------------------------------------------------------
+
+mkdir -p "${BIN_DIR}"
+chmod +x "${TMPDIR}/tusk"
+mv -f "${TMPDIR}/tusk" "${BIN_DIR}/tusk"
+
+INSTALLED_VERSION="$("${BIN_DIR}/tusk" --version 2>/dev/null || echo "unknown")"
+
+echo ""
+echo "✓ tusk installed to ${BIN_DIR}/tusk"
+echo "  version: ${INSTALLED_VERSION}"
+
+# ---------------------------------------------------------------------------
+# PATH integration
+# ---------------------------------------------------------------------------
+
+# Detect the user's shell so we can patch the right rc file.
+SHELL_NAME="$(basename "${SHELL:-/bin/sh}")"
+case "${SHELL_NAME}" in
+    bash) RC_FILE="${HOME}/.bashrc" ;;
+    zsh)  RC_FILE="${HOME}/.zshrc" ;;
+    fish) RC_FILE="${HOME}/.config/fish/config.fish" ;;
+    *)    RC_FILE="${HOME}/.profile" ;;
+esac
+
+PATH_MARKER="tusk"
+
+# Idempotent PATH update: add the line only if it's not already present.
+if ! grep -qF "${BIN_DIR}" "${RC_FILE}" 2>/dev/null; then
+    if [ "${SHELL_NAME}" = "fish" ]; then
+        {
+            echo ""
+            echo "# tusk"
+            echo "set -gx PATH \"${BIN_DIR} \$PATH\""
+        } >> "${RC_FILE}"
     else
-        install_from_source "$tag"
+        {
+            echo ""
+            echo "# tusk"
+            echo "export PATH=\"${BIN_DIR}:\$PATH\""
+        } >> "${RC_FILE}"
     fi
+    echo "  added ${BIN_DIR} to PATH in ${RC_FILE}"
+    NEED_PATH_RELOAD=1
+else
+    echo "  ${BIN_DIR} already in PATH (via ${RC_FILE})"
+    NEED_PATH_RELOAD=0
+fi
 
-    [ -x "$EXE" ] || error "installation failed: ${EXE} is missing."
+# ---------------------------------------------------------------------------
+# Done
+# ---------------------------------------------------------------------------
 
-    setup_path
-
-    printf '\n'
-    success "Tusk was installed to ${Bold}${EXE}${Color_Off}"
-    info "Version: ${Bold}$("${EXE}" --version 2>/dev/null || echo unknown)${Color_Off}"
-
-    printf '\n'
-    case ":${PATH}:" in
-        *":${BIN_DIR}:"*)
-            info "Run ${Bold}${BIN_NAME} --help${Color_Off} to get started."
-            ;;
-        *)
-            info "Restart your shell or run this to use ${BIN_NAME} now:"
-            printf '\n    %bexport PATH="%s:$PATH"%b\n\n' "${Bold}" "${BIN_DIR}" "${Color_Off}"
-            info "Then run ${Bold}${BIN_NAME} --help${Color_Off} to get started."
-            ;;
-    esac
-}
-
-main "$@"
+echo ""
+if [ "${NEED_PATH_RELOAD:-0}" = "1" ]; then
+    echo "Restart your shell, or run:"
+    echo "  source ${RC_FILE}"
+    echo ""
+fi
+echo "Then verify:"
+echo "  tusk --help"
+echo ""
+echo "Try it on a PHP project:"
+echo "  cd path/to/your/php/project"
+echo "  tusk install"
