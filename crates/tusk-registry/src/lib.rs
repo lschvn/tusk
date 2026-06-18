@@ -1,0 +1,17 @@
+//! `tusk-registry` — Packagist client behind a `Registry` trait.
+//!
+//! The trait boundary lets the resolver, installer, and CLI tests run fully
+//! offline against `wiremock` mocks or an in-process `MockRegistry`. Per
+//! GOAL.md §5, no test in the workspace may hit the real network.
+
+#![forbid(unsafe_code)]
+
+mod client;
+mod model;
+mod packagist;
+mod mock;
+
+pub use client::{Registry, RegistryError};
+pub use model::{PackageMetadata, PackageVersion, DistRef, VersionConstraint};
+pub use packagist::PackagistClient;
+pub use mock::MockRegistry;

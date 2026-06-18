@@ -1,0 +1,90 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/tusk-cli",
+    "crates/tusk-manifest",
+    "crates/tusk-semver",
+    "crates/tusk-resolver",
+    "crates/tusk-registry",
+    "crates/tusk-installer",
+    "crates/tusk-autoload",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+authors = ["Louis Leschevin <lschvn>"]
+repository = "https://github.com/lschvn/tusk"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# Practical relaxations for an early-stage workspace:
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+missing_const_for_fn = "allow"
+# Allow `expect` in tests, deny elsewhere via clippy.toml.
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+opt-level = 3
+strip = "symbols"
+
+# Shared deps pinned at workspace level
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+thiserror = "1"
+anyhow = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "sync"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2", "json", "stream"] }
+clap = { version = "4", features = ["derive"] }
+indicatif = "0.17"
+pubgrub = "0.2"
+sha1_smol = "1"
+sha2 = "0.10"
+hex = "0.4"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+flate2 = "1"
+url = "2"
+indexmap = { version = "2", features = ["serde"] }
+semver = "1"  # only used as a reference, NOT as our primary parser (see spec §4)
+wiremock = "0.6"
+assert_cmd = "2"
+predicates = "3"
+insta = { version = "1", features = ["yaml", "json"] }
+tempfile = "3"
+proptest = "1"
+chrono = { version = "0.4", features = ["serde"] }
+
+[workspace.dependencies.tusk-semver]
+path = "crates/tusk-semver"
+version = "0.1.0"
+
+[workspace.dependencies.tusk-manifest]
+path = "crates/tusk-manifest"
+version = "0.1.0"
+
+[workspace.dependencies.tusk-registry]
+path = "crates/tusk-registry"
+version = "0.1.0"
+
+[workspace.dependencies.tusk-resolver]
+path = "crates/tusk-resolver"
+version = "0.1.0"
+
+[workspace.dependencies.tusk-installer]
+path = "crates/tusk-installer"
+version = "0.1.0"
+
+[workspace.dependencies.tusk-autoload]
+path = "crates/tusk-autoload"
+version = "0.1.0"

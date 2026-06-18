@@ -1,0 +1,21 @@
+[package]
+name = "tusk-resolver"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "PubGrub adapter with Composer-flavored constraints (dependency resolution)"
+
+[lints]
+workspace = true
+
+[dependencies]
+pubgrub = { workspace = true }
+thiserror = { workspace = true }
+tusk-semver = { workspace = true }
+tusk-manifest = { workspace = true }
+tusk-registry = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }

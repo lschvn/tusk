@@ -1,0 +1,28 @@
+[package]
+name = "tusk-registry"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Packagist client (p2 metadata) behind a Registry trait, mockable in tests"
+
+[lints]
+workspace = true
+
+[dependencies]
+async-trait = "0.1"
+parking_lot = "0.12"
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
+thiserror = { workspace = true }
+url = { workspace = true }
+tusk-semver = { workspace = true }
+tusk-manifest = { workspace = true }
+
+[dev-dependencies]
+wiremock = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+insta = { workspace = true }

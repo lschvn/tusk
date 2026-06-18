@@ -1,0 +1,23 @@
+[package]
+name = "tusk-autoload"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Generate Composer-compatible autoloader PHP files (PSR-4, PSR-0, classmap, files)"
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+indexmap = { workspace = true }
+tusk-semver = { workspace = true }
+tusk-manifest = { workspace = true }
+tusk-resolver = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+tempfile = { workspace = true }
+predicates = { workspace = true }

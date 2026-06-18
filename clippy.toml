@@ -1,0 +1,3 @@
+# Clippy config (workspace-wide)
+# The spec (GOAL.md §4) says clippy is part of the CI gate; we treat warnings as errors.
+# We allow `unwrap_used` and similar in tests via the test setup, not via global allow.
