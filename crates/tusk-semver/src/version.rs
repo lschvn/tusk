@@ -63,11 +63,33 @@ pub struct Version {
 }
 
 impl Version {
-    pub fn parse(_s: &str) -> Result<Self, VersionError> {
-        unimplemented!("see Step 1 tests")
+    pub fn parse(s: &str) -> Result<Self, VersionError> {
+        let mut parts = s.split('.');
+        let major: u32 = parts
+            .next()
+            .and_then(|p| p.parse().ok())
+            .ok_or_else(|| VersionError::Invalid(s.to_string()))?;
+        let minor: u32 = parts
+            .next()
+            .and_then(|p| p.parse().ok())
+            .ok_or_else(|| VersionError::Invalid(s.to_string()))?;
+        let patch: u32 = parts
+            .next()
+            .and_then(|p| p.parse().ok())
+            .ok_or_else(|| VersionError::Invalid(s.to_string()))?;
+        Ok(Self {
+            major,
+            minor,
+            patch,
+            tweak: None,
+            stability: Stability::Stable,
+            stability_n: None,
+            dev_branch: None,
+            is_v_prefixed: false,
+        })
     }
 
     pub fn to_composer_string(&self) -> String {
-        unimplemented!("see Step 1 tests")
+        format!("{}.{}.{}", self.major, self.minor, self.patch)
     }
 }
