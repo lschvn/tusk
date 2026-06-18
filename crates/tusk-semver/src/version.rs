@@ -104,8 +104,9 @@ impl Version {
 
         // Parse stability suffix, if any.
         let (stability, stability_n) = match stability_tail {
-            Some(suf) => parse_stability_suffix(suf)
-                .ok_or_else(|| VersionError::Invalid(s.to_string()))?,
+            Some(suf) => {
+                parse_stability_suffix(suf).ok_or_else(|| VersionError::Invalid(s.to_string()))?
+            }
             None => (Stability::Stable, None),
         };
 

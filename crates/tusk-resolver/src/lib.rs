@@ -12,4 +12,4 @@ mod adapter;
 mod solver;
 
 pub use adapter::ComposerVersion;
-pub use solver::{ResolveError, ResolveOptions, Resolver, ResolvedDependency};
+pub use solver::{ResolveError, ResolveOptions, ResolvedDependency, Resolver};

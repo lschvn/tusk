@@ -23,11 +23,9 @@ pub fn bar(len: u64, msg: &str, quiet: bool) -> ProgressBar {
     }
     let pb = ProgressBar::new(len);
     pb.set_style(
-        ProgressStyle::with_template(
-            "{msg} [{bar:30.cyan/blue}] {pos}/{len} {eta_precise}",
-        )
-        .unwrap()
-        .progress_chars("=>-"),
+        ProgressStyle::with_template("{msg} [{bar:30.cyan/blue}] {pos}/{len} {eta_precise}")
+            .unwrap()
+            .progress_chars("=>-"),
     );
     pb.set_message(msg.to_owned());
     pb

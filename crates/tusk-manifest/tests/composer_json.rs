@@ -41,7 +41,10 @@ fn from_str_parses_require_dev_separately_from_require() {
 
     assert_eq!(parsed.require.get("php").map(String::as_str), Some("^8.1"));
     assert_eq!(
-        parsed.require_dev.get("phpunit/phpunit").map(String::as_str),
+        parsed
+            .require_dev
+            .get("phpunit/phpunit")
+            .map(String::as_str),
         Some("^10.0"),
         "require-dev must populate its own map and not leak into require"
     );
@@ -53,8 +56,7 @@ fn from_str_parses_require_dev_separately_from_require() {
 
 #[test]
 fn from_str_parses_multipath_psr4_autoload() {
-    let parsed =
-        ComposerJson::from_str(MULTIPATH_PSR4).expect("multipath-psr4.json should parse");
+    let parsed = ComposerJson::from_str(MULTIPATH_PSR4).expect("multipath-psr4.json should parse");
 
     let psr4 = parsed
         .autoload
@@ -84,8 +86,7 @@ fn from_str_parses_multipath_psr4_autoload() {
 
 #[test]
 fn from_str_parses_autoload_files_array() {
-    let parsed =
-        ComposerJson::from_str(AUTOLOAD_FILES).expect("autoload-files.json should parse");
+    let parsed = ComposerJson::from_str(AUTOLOAD_FILES).expect("autoload-files.json should parse");
 
     let files = parsed
         .autoload
@@ -104,8 +105,7 @@ fn from_str_parses_autoload_files_array() {
 
 #[test]
 fn from_str_parses_classmap_and_psr0_autoload() {
-    let parsed =
-        ComposerJson::from_str(CLASSMAP_PSR0).expect("classmap-psr0.json should parse");
+    let parsed = ComposerJson::from_str(CLASSMAP_PSR0).expect("classmap-psr0.json should parse");
 
     // psr-0: a JSON object mapping prefix -> string path.
     let psr0 = parsed
@@ -139,7 +139,9 @@ fn from_str_parses_classmap_and_psr0_autoload() {
         .expect("autoload.exclude-from-classmap should be present")
         .as_array()
         .expect("autoload.exclude-from-classmap must be a JSON array");
-    let excluded_paths: Vec<&str> =
-        excluded.iter().filter_map(serde_json::Value::as_str).collect();
+    let excluded_paths: Vec<&str> = excluded
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .collect();
     assert_eq!(excluded_paths, vec!["src/Legacy/Internal"]);
 }

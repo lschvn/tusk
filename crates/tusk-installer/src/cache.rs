@@ -9,6 +9,8 @@ pub struct Cache {
 
 impl Cache {
     pub fn new(_root: PathBuf) -> Self {
-        Self { root: PathBuf::new() }
+        Self {
+            root: PathBuf::new(),
+        }
     }
 }

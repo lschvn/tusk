@@ -20,7 +20,10 @@ pub struct Installer<R: Registry> {
 
 impl<R: Registry> Installer<R> {
     pub fn new(_registry: R, vendor_dir: PathBuf) -> Self {
-        Self { _registry: std::marker::PhantomData, vendor_dir }
+        Self {
+            _registry: std::marker::PhantomData,
+            vendor_dir,
+        }
     }
     pub async fn install_all(
         &self,

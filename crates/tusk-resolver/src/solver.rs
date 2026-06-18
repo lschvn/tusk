@@ -32,7 +32,9 @@ pub struct Resolver<R: Registry> {
 
 impl<R: Registry> Resolver<R> {
     pub fn new(_registry: R) -> Self {
-        Self { _registry: std::marker::PhantomData }
+        Self {
+            _registry: std::marker::PhantomData,
+        }
     }
     pub fn resolve(
         &self,

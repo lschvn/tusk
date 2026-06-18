@@ -55,7 +55,9 @@ pub struct PackagistClient {
 
 impl PackagistClient {
     pub fn new(_base_url: impl Into<String>) -> Self {
-        Self { base_url: String::new() }
+        Self {
+            base_url: String::new(),
+        }
     }
 }
 

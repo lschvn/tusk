@@ -21,9 +21,7 @@ async fn packagist_client_stores_custom_base_url() {
 
     Mock::given(method("GET"))
         .and(path("/p2/acme/foo.json"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(
-            r#"{"packages":{"acme/foo":[]}}"#,
-        ))
+        .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"packages":{"acme/foo":[]}}"#))
         .expect(1)
         .mount(&server)
         .await;
@@ -53,9 +51,7 @@ async fn packagist_client_does_not_hit_unrelated_hosts() {
 
     Mock::given(method("GET"))
         .and(path("/p2/acme/foo.json"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(
-            r#"{"packages":{"acme/foo":[]}}"#,
-        ))
+        .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"packages":{"acme/foo":[]}}"#))
         .expect(1)
         .mount(&server)
         .await;

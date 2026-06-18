@@ -10,4 +10,4 @@ mod composer_json;
 mod composer_lock;
 
 pub use composer_json::{Autoload, AutoloadDev, ComposerJson, RequireMap};
-pub use composer_lock::{ComposerLock, LockedPackage, LockContentHash};
+pub use composer_lock::{ComposerLock, LockContentHash, LockedPackage};

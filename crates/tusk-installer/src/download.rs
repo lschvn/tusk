@@ -17,6 +17,8 @@ pub struct Downloader {
 
 impl Downloader {
     pub fn new() -> Self {
-        Self { client: reqwest::Client::new() }
+        Self {
+            client: reqwest::Client::new(),
+        }
     }
 }

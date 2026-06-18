@@ -5,8 +5,8 @@
 
 #![forbid(unsafe_code)]
 
-mod version;
 mod constraint;
+mod version;
 
-pub use version::{Stability, Version};
 pub use constraint::{Constraint, ConstraintParser};
+pub use version::{Stability, Version};

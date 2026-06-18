@@ -27,7 +27,9 @@ async fn mock_registry_supports_concurrent_fetch() {
     let mut handles = Vec::new();
     for _ in 0..8 {
         let reg = Arc::clone(&registry);
-        handles.push(tokio::spawn(async move { reg.package_metadata("acme", "shared").await }));
+        handles.push(tokio::spawn(async move {
+            reg.package_metadata("acme", "shared").await
+        }));
     }
 
     // Assert: every task got the same metadata back.

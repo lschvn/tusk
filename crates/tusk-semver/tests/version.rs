@@ -22,7 +22,11 @@ fn parse_v_prefix_tolerated_and_stripped_on_output() {
     assert_eq!(v.minor, 5);
     assert_eq!(v.patch, 0);
     assert!(v.is_v_prefixed, "v-prefix on input should be recorded");
-    assert_eq!(v.to_composer_string(), "2.5.0", "v-prefix must not appear on output");
+    assert_eq!(
+        v.to_composer_string(),
+        "2.5.0",
+        "v-prefix must not appear on output"
+    );
 }
 
 #[test]
