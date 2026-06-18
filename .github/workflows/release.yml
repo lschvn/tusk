@@ -1,19 +1,56 @@
 name: release
 
 # Build prebuilt `tusk` binaries for every supported platform and publish them
-# as assets on a GitHub Release whenever a version tag (e.g. v0.1.0) is pushed.
-# These assets are what `install.sh` downloads.
+# as assets on a GitHub Release. These assets are what `install.sh` downloads.
+#
+# Trigger either by pushing a version tag (e.g. `git push origin v0.1.0`) or by
+# running this workflow manually from the Actions tab with a tag name.
 
 on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to release (e.g. v0.1.0)"
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 jobs:
+  # Resolve the release tag and, for manual runs, create it if needed so the
+  # build jobs have a tag to attach their assets to.
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tag
+        id: resolve
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+              echo "Tag ${tag} already exists; reusing it."
+            else
+              git tag -a "${tag}" -m "tusk ${tag}"
+              git push origin "refs/tags/${tag}"
+            fi
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
   upload-assets:
+    needs: prepare
     name: ${{ matrix.target }}
     strategy:
       fail-fast: false
@@ -30,13 +67,15 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ needs.prepare.outputs.tag }}
 
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
       # Builds with `cross` when cross-compilation is required (musl, aarch64),
       # produces tusk-<target>.tar.gz plus a matching .sha256, and uploads both
-      # to the release for the pushed tag (creating it if necessary).
+      # to the release for the tag (creating the release if necessary).
       - name: Build and upload
         uses: taiki-e/upload-rust-binary-action@v1
         with:
@@ -45,4 +84,5 @@ jobs:
           archive: $bin-$target
           tar: unix
           checksum: sha256
+          ref: refs/tags/${{ needs.prepare.outputs.tag }}
           token: ${{ secrets.GITHUB_TOKEN }}
