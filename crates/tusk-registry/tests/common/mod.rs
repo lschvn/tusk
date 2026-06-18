@@ -2,10 +2,9 @@
 
 #![allow(dead_code)]
 
-use indexmap::IndexMap;
 use tusk_manifest::RequireMap;
-use tusk_registry::{DistRef, PackageMetadata, PackageVersion, Version};
-use tusk_semver::Stability;
+use tusk_registry::{DistRef, PackageMetadata, PackageVersion};
+use tusk_semver::{Stability, Version};
 
 /// Build a `Version` with the given major/minor/patch numbers, marked stable.
 ///
@@ -30,7 +29,7 @@ pub fn stable_version(major: u32, minor: u32, patch: u32) -> Version {
 /// Build an empty `RequireMap` (no dependencies).
 #[must_use]
 pub fn empty_require() -> RequireMap {
-    IndexMap::new()
+    RequireMap::new()
 }
 
 /// Build a `DistRef` pointing at a fake (but well-formed) zip URL and shasum.
