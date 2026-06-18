@@ -19,3 +19,4 @@ tusk-registry = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
