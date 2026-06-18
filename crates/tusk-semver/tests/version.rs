@@ -34,3 +34,20 @@ fn parse_four_component_sets_tweak() {
     assert_eq!(v.tweak, Some(4));
     assert_eq!(v.stability, Stability::Stable);
 }
+
+#[test]
+fn parse_stability_suffixes() {
+    let cases: &[(&str, Stability, Option<u32>)] = &[
+        ("1.2.3-alpha", Stability::Alpha, None),
+        ("1.2.3-alpha.2", Stability::Alpha, Some(2)),
+        ("1.2.3-beta.1", Stability::Beta, Some(1)),
+        ("1.2.3-RC1", Stability::Rc, Some(1)),
+        ("1.2.3-dev", Stability::Dev, None),
+        ("1.2.3-pl3", Stability::Stable, Some(3)),
+    ];
+    for (input, expected_stab, expected_n) in cases {
+        let v = Version::parse(input).unwrap_or_else(|e| panic!("{input} should parse: {e:?}"));
+        assert_eq!(v.stability, *expected_stab, "stability for {input}");
+        assert_eq!(v.stability_n, *expected_n, "stability_n for {input}");
+    }
+}
