@@ -82,7 +82,7 @@ download() {
 resolve_latest() {
     local effective
     if has curl; then
-        effective="$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
+        effective="$(curl -fsSL -o /dev/null -w '%{url_effective}' \
             "https://github.com/${REPO}/releases/latest")"
     elif has wget; then
         effective="$(wget -q -S --max-redirect=10 -O /dev/null \
