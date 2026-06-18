@@ -5,11 +5,11 @@
     "cpu_count": "12",
     "cpu_model": "QEMU Virtual CPU version 2.5+",
     "kernel": "6.8.0-124-generic",
-    "memory": "Mem:            23Gi       1,8Gi        16Gi       392Ki       5,4Gi        21Gi",
+    "memory": "Mem:            23Gi       1,7Gi        16Gi       392Ki       5,9Gi        21Gi",
     "os": "Ubuntu 24.04.4 LTS",
     "php_version": "PHP 8.3.13 (cli) (built: Nov  1 2024 06:38:49) (NTS)\nCopyright (c) The PHP Group\nZend Engine v4.3.13, Copyright (c) Zend Technologies",
-    "tusk_commit": "a2d9b30ae6fa217627c4e47351dab173f23cc47f",
-    "tusk_commit_short": "a2d9b30",
+    "tusk_commit": "f536b440b15cab2fbf0989abc6ed08afbbeb465a",
+    "tusk_commit_short": "f536b44",
     "tusk_version": "tusk 0.1.0"
   },
   "fixture": "medium",
@@ -26,7 +26,7 @@
   },
   "tools": {
     "composer": {
-      "cold_seconds": 2.99,
+      "cold_seconds": 1.446,
       "composer_cache_dir": "/home/louis/.composer/cache",
       "disk_bytes": 15716497,
       "error": null,
@@ -35,25 +35,30 @@
       "tool": "composer",
       "total_deps_resolved": 75,
       "tusk_cache_dir": "/home/louis/.cache/tusk",
-      "warm_avg_seconds": 0.267,
-      "warm_max_seconds": 0.296,
-      "warm_min_seconds": 0.252,
+      "warm_avg_seconds": 0.258,
+      "warm_max_seconds": 0.261,
+      "warm_min_seconds": 0.256,
       "warm_seconds": [
-        0.296,
-        0.253,
-        0.252
+        0.258,
+        0.256,
+        0.261
       ]
     },
     "tusk": {
-      "cold_seconds": 0.085,
+      "cold_seconds": 0.784,
       "composer_cache_dir": "/home/louis/.composer/cache",
       "disk_bytes": 0,
       "error": [
         "Error: dependency resolution failed",
         "",
         "Caused by:",
-        "    0: registry error for illuminate/database: parse error: missing dist field",
-        "    1: parse error: missing dist field"
+        "    version solving failed:",
+        "    No version of psr/http-message satisfies all constraints:",
+        "      guzzlehttp/psr7 requires psr/http-message: ^1.1 || ^2.0",
+        "      psr/http-client requires psr/http-message: ^1.0 || ^2.0",
+        "      psr/http-factory requires psr/http-message: ^1.0 || ^2.0",
+        "    ",
+        "    Available versions: 1.0.1, 0.11.0, 0.10.1, 0.10.0, 0.9.2, 0.9.1, 0.9.0, 0.8.0, 0.7.0, 0.6.0, 0.5.1, 0.5.0, 0.4.0, 0.3.0, 0.2.0, 0.1.0"
       ],
       "packages_installed": 0,
       "success": false,

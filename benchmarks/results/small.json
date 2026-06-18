@@ -5,28 +5,26 @@
     "cpu_count": "12",
     "cpu_model": "QEMU Virtual CPU version 2.5+",
     "kernel": "6.8.0-124-generic",
-    "memory": "Mem:            23Gi       1,8Gi        16Gi       392Ki       5,4Gi        21Gi",
+    "memory": "Mem:            23Gi       1,8Gi        16Gi       392Ki       5,9Gi        21Gi",
     "os": "Ubuntu 24.04.4 LTS",
     "php_version": "PHP 8.3.13 (cli) (built: Nov  1 2024 06:38:49) (NTS)\nCopyright (c) The PHP Group\nZend Engine v4.3.13, Copyright (c) Zend Technologies",
-    "tusk_commit": "a2d9b30ae6fa217627c4e47351dab173f23cc47f",
-    "tusk_commit_short": "a2d9b30",
+    "tusk_commit": "f536b440b15cab2fbf0989abc6ed08afbbeb465a",
+    "tusk_commit_short": "f536b44",
     "tusk_version": "tusk 0.1.0"
   },
   "fixture": "small",
   "fixture_path": "/home/louis/work/tusk/benchmarks/fixtures/small",
   "summary": {
-    "cold_speedup": null,
+    "cold_speedup": 0.79,
     "composer_success": true,
-    "notes": [
-      "tusk install FAILED \u2014 see tools.tusk.error"
-    ],
-    "tusk_success": false,
-    "warm_speedup_avg": null,
-    "warm_speedup_min": null
+    "notes": [],
+    "tusk_success": true,
+    "warm_speedup_avg": 0.15,
+    "warm_speedup_min": 0.14
   },
   "tools": {
     "composer": {
-      "cold_seconds": 0.327,
+      "cold_seconds": 0.311,
       "composer_cache_dir": "/home/louis/.composer/cache",
       "disk_bytes": 59057,
       "error": null,
@@ -35,35 +33,33 @@
       "tool": "composer",
       "total_deps_resolved": 2,
       "tusk_cache_dir": "/home/louis/.cache/tusk",
-      "warm_avg_seconds": 0.248,
-      "warm_max_seconds": 0.313,
+      "warm_avg_seconds": 0.217,
+      "warm_max_seconds": 0.218,
       "warm_min_seconds": 0.216,
       "warm_seconds": [
-        0.313,
         0.216,
-        0.216
+        0.218,
+        0.217
       ]
     },
     "tusk": {
-      "cold_seconds": 0.082,
+      "cold_seconds": 0.246,
       "composer_cache_dir": "/home/louis/.composer/cache",
-      "disk_bytes": 0,
-      "error": [
-        "Error: installation failed",
-        "",
-        "Caused by:",
-        "    0: download error: http error: HTTP 403 Forbidden for https://api.github.com/repos/php-fig/container/zipball/c71ecc56dfe541dbd90c5360474fbc405f8d5963",
-        "    1: http error: HTTP 403 Forbidden for https://api.github.com/repos/php-fig/container/zipball/c71ecc56dfe541dbd90c5360474fbc405f8d5963"
-      ],
-      "packages_installed": 0,
-      "success": false,
+      "disk_bytes": 9075,
+      "error": null,
+      "packages_installed": 2,
+      "success": true,
       "tool": "tusk",
-      "total_deps_resolved": null,
+      "total_deps_resolved": 2,
       "tusk_cache_dir": "/home/louis/.cache/tusk",
-      "warm_avg_seconds": null,
-      "warm_max_seconds": null,
-      "warm_min_seconds": null,
-      "warm_seconds": []
+      "warm_avg_seconds": 0.033,
+      "warm_max_seconds": 0.034,
+      "warm_min_seconds": 0.031,
+      "warm_seconds": [
+        0.033,
+        0.031,
+        0.034
+      ]
     }
   },
   "warm_runs": 3
