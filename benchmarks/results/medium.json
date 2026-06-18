@@ -5,30 +5,28 @@
     "cpu_count": "12",
     "cpu_model": "QEMU Virtual CPU version 2.5+",
     "kernel": "6.8.0-124-generic",
-    "memory": "Mem:            23Gi       1,7Gi        16Gi       392Ki       5,9Gi        21Gi",
+    "memory": "Mem:            23Gi       1,8Gi        15Gi       392Ki       7,0Gi        21Gi",
     "os": "Ubuntu 24.04.4 LTS",
     "php_version": "PHP 8.3.13 (cli) (built: Nov  1 2024 06:38:49) (NTS)\nCopyright (c) The PHP Group\nZend Engine v4.3.13, Copyright (c) Zend Technologies",
-    "tusk_commit": "f536b440b15cab2fbf0989abc6ed08afbbeb465a",
-    "tusk_commit_short": "f536b44",
+    "tusk_commit": "86aa094fc6bc092114bec6b91493d5a695b0162d",
+    "tusk_commit_short": "86aa094",
     "tusk_version": "tusk 0.1.0"
   },
   "fixture": "medium",
   "fixture_path": "/home/louis/work/tusk/benchmarks/fixtures/medium",
   "summary": {
-    "cold_speedup": null,
+    "cold_speedup": 0.68,
     "composer_success": true,
-    "notes": [
-      "tusk install FAILED \u2014 see tools.tusk.error"
-    ],
-    "tusk_success": false,
-    "warm_speedup_avg": null,
-    "warm_speedup_min": null
+    "notes": [],
+    "tusk_success": true,
+    "warm_speedup_avg": 1.83,
+    "warm_speedup_min": 1.69
   },
   "tools": {
     "composer": {
-      "cold_seconds": 1.446,
+      "cold_seconds": 1.826,
       "composer_cache_dir": "/home/louis/.composer/cache",
-      "disk_bytes": 15716497,
+      "disk_bytes": 15752535,
       "error": null,
       "packages_installed": 75,
       "success": true,
@@ -36,39 +34,32 @@
       "total_deps_resolved": 75,
       "tusk_cache_dir": "/home/louis/.cache/tusk",
       "warm_avg_seconds": 0.258,
-      "warm_max_seconds": 0.261,
-      "warm_min_seconds": 0.256,
+      "warm_max_seconds": 0.263,
+      "warm_min_seconds": 0.255,
       "warm_seconds": [
-        0.258,
-        0.256,
-        0.261
+        0.263,
+        0.255,
+        0.257
       ]
     },
     "tusk": {
-      "cold_seconds": 0.784,
+      "cold_seconds": 1.244,
       "composer_cache_dir": "/home/louis/.composer/cache",
-      "disk_bytes": 0,
-      "error": [
-        "Error: dependency resolution failed",
-        "",
-        "Caused by:",
-        "    version solving failed:",
-        "    No version of psr/http-message satisfies all constraints:",
-        "      guzzlehttp/psr7 requires psr/http-message: ^1.1 || ^2.0",
-        "      psr/http-client requires psr/http-message: ^1.0 || ^2.0",
-        "      psr/http-factory requires psr/http-message: ^1.0 || ^2.0",
-        "    ",
-        "    Available versions: 1.0.1, 0.11.0, 0.10.1, 0.10.0, 0.9.2, 0.9.1, 0.9.0, 0.8.0, 0.7.0, 0.6.0, 0.5.1, 0.5.0, 0.4.0, 0.3.0, 0.2.0, 0.1.0"
-      ],
-      "packages_installed": 0,
-      "success": false,
+      "disk_bytes": 27931804,
+      "error": null,
+      "packages_installed": 63,
+      "success": true,
       "tool": "tusk",
-      "total_deps_resolved": null,
+      "total_deps_resolved": 63,
       "tusk_cache_dir": "/home/louis/.cache/tusk",
-      "warm_avg_seconds": null,
-      "warm_max_seconds": null,
-      "warm_min_seconds": null,
-      "warm_seconds": []
+      "warm_avg_seconds": 0.473,
+      "warm_max_seconds": 0.504,
+      "warm_min_seconds": 0.445,
+      "warm_seconds": [
+        0.445,
+        0.472,
+        0.504
+      ]
     }
   },
   "warm_runs": 3

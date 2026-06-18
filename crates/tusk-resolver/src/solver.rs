@@ -62,64 +62,108 @@ impl<R: Registry> Resolver<R> {
     ///
     /// `root` = production deps from `require`.
     /// `dev` = dev deps from `require-dev` (only resolved if `opts.include_dev`).
+    ///
+    /// Metadata fetching is **parallel** with bounded concurrency (16 concurrent
+    /// requests). This is the same strategy Bun uses — for projects with N
+    /// packages, cold install time drops from `O(N × RTT)` to `O(ceil(N / 16) × RTT)`.
+    /// For a 55-package project on a 100ms-RTT network, that's ~5.5s → ~350ms.
+    #[allow(clippy::too_many_lines)]
     pub async fn resolve(
         &self,
         root: RequireMap,
         dev: RequireMap,
         opts: ResolveOptions,
     ) -> Result<Vec<ResolvedDependency>, ResolveError> {
-        // Collect all initial requirements and their sources.
+        use futures::stream::{FuturesUnordered, StreamExt};
+
+        const CONCURRENCY: usize = 16;
         // constraint_sources[pkg_name] = [(constraint_str, requesting_pkg)]
         let mut constraints: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
-        // Queue of packages to process
-        let mut queue: VecDeque<String> = VecDeque::new();
+        // BFS queue of packages to fetch metadata for
+        let mut to_fetch: VecDeque<String> = VecDeque::new();
+        // In-flight set (for dedup — don't queue the same package twice)
+        let mut in_flight: BTreeSet<String> = BTreeSet::new();
+        // Resolved packages
+        let mut resolved: BTreeMap<String, ResolvedDependency> = BTreeMap::new();
 
+        // Seed with root + dev deps
         for (name, constraint) in &root {
             constraints
                 .entry(name.clone())
                 .or_default()
                 .push((constraint.clone(), "<root>".to_string()));
-            queue.push_back(name.clone());
+            to_fetch.push_back(name.clone());
         }
-
         if opts.include_dev {
             for (name, constraint) in &dev {
                 constraints
                     .entry(name.clone())
                     .or_default()
                     .push((constraint.clone(), "<root-dev>".to_string()));
-                queue.push_back(name.clone());
+                to_fetch.push_back(name.clone());
             }
         }
 
-        // Resolved packages: name → ResolvedDependency
-        let mut resolved: BTreeMap<String, ResolvedDependency> = BTreeMap::new();
-        // Track which packages we've already fetched metadata for
-        let mut fetched: BTreeSet<String> = BTreeSet::new();
+        // Build a stream of in-flight metadata fetches. Use FuturesUnordered
+        // for N-way concurrent fetch with backpressure on the in_flight set.
+        let mut in_progress: FuturesUnordered<
+            std::pin::Pin<
+                Box<
+                    dyn std::future::Future<
+                            Output = (
+                                String,
+                                Result<
+                                    tusk_registry::PackageMetadata,
+                                    tusk_registry::RegistryError,
+                                >,
+                            ),
+                        > + Send,
+                >,
+            >,
+        > = FuturesUnordered::new();
 
-        while let Some(pkg_name) = queue.pop_front() {
-            // Skip platform requirements (php, ext-*, lib-*) — not installable packages
-            if is_platform_requirement(&pkg_name) {
-                continue;
+        while !to_fetch.is_empty() || !in_progress.is_empty() {
+            // Fill the in-flight queue up to CONCURRENCY
+            while in_progress.len() < CONCURRENCY {
+                // Pop the next package that's not already in flight or resolved
+                let next = loop {
+                    let Some(p) = to_fetch.pop_front() else {
+                        break None;
+                    };
+                    if is_platform_requirement(&p)
+                        || resolved.contains_key(&p)
+                        || in_flight.contains(&p)
+                    {
+                        continue;
+                    }
+                    break Some(p);
+                };
+                let Some(pkg_name) = next else {
+                    break;
+                };
+                in_flight.insert(pkg_name.clone());
+                let (vendor, package) = split_name_owned(&pkg_name);
+                in_progress.push(Box::pin(async move {
+                    let res = self.registry.package_metadata(&vendor, &package).await;
+                    (pkg_name, res)
+                }));
             }
 
-            // Already resolved?
-            if resolved.contains_key(&pkg_name) {
-                continue;
+            // If no work in flight, drain remaining queue (only platform-reqs left)
+            if in_progress.is_empty() {
+                break;
             }
 
-            // Fetch metadata
-            let (vendor, package) = split_name(&pkg_name);
-            let metadata = self
-                .registry
-                .package_metadata(vendor, package)
-                .await
-                .map_err(|source| ResolveError::Registry {
-                    package: pkg_name.clone(),
-                    source,
-                })?;
+            // Wait for one to complete
+            let Some((pkg_name, metadata_result)) = in_progress.next().await else {
+                break;
+            };
+            in_flight.remove(&pkg_name);
 
-            fetched.insert(pkg_name.clone());
+            let metadata = metadata_result.map_err(|source| ResolveError::Registry {
+                package: pkg_name.clone(),
+                source,
+            })?;
 
             // Collect all constraints on this package
             let pkg_constraints = constraints.get(&pkg_name).cloned().unwrap_or_default();
@@ -129,10 +173,7 @@ impl<R: Registry> Resolver<R> {
                 .iter()
                 .map(|(cs, src)| match Constraint::parse(cs) {
                     Ok(c) => (c, cs.clone(), src.clone()),
-                    Err(_) => {
-                        // If constraint can't be parsed, treat as "*" (any)
-                        (Constraint::parse("*").unwrap(), cs.clone(), src.clone())
-                    }
+                    Err(_) => (Constraint::parse("*").unwrap(), cs.clone(), src.clone()),
                 })
                 .collect();
 
@@ -182,11 +223,14 @@ impl<R: Registry> Resolver<R> {
                 if is_platform_requirement(dep_name) {
                     continue;
                 }
+                if resolved.contains_key(dep_name) {
+                    continue;
+                }
                 constraints
                     .entry(dep_name.clone())
                     .or_default()
                     .push((dep_constraint.clone(), pkg_name.clone()));
-                queue.push_back(dep_name.clone());
+                to_fetch.push_back(dep_name.clone());
             }
         }
 
@@ -205,11 +249,12 @@ fn is_platform_requirement(name: &str) -> bool {
         || !name.contains('/')
 }
 
-/// Split "vendor/package" into ("vendor", "package").
-fn split_name(full: &str) -> (&str, &str) {
+/// Owned version of `split_name` — returns owned strings so the result
+/// can be moved into an `async move` block without borrow issues.
+fn split_name_owned(full: &str) -> (String, String) {
     match full.split_once('/') {
-        Some((v, p)) => (v, p),
-        None => (full, ""),
+        Some((v, p)) => (v.to_string(), p.to_string()),
+        None => (full.to_string(), String::new()),
     }
 }
 

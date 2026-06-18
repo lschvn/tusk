@@ -80,19 +80,26 @@ impl Version {
         };
 
         // Parse numeric prefix X[.Y[.Z[.T]]]
+        // Composer allows short forms: `2.0` and `2` are valid (the missing
+        // parts default to 0). The constraint `^2.0` therefore matches 2.0.0+.
         let mut parts = numeric_part.split('.');
         let major: u32 = parts
             .next()
             .and_then(|p| p.parse().ok())
             .ok_or_else(|| VersionError::Invalid(s.to_string()))?;
+        // Parse up to 3 more components; missing ones default to 0.
         let minor: u32 = parts
             .next()
-            .and_then(|p| p.parse().ok())
-            .ok_or_else(|| VersionError::Invalid(s.to_string()))?;
+            .map(str::parse)
+            .transpose()
+            .map_err(|_| VersionError::Invalid(s.to_string()))?
+            .unwrap_or(0);
         let patch: u32 = parts
             .next()
-            .and_then(|p| p.parse().ok())
-            .ok_or_else(|| VersionError::Invalid(s.to_string()))?;
+            .map(str::parse)
+            .transpose()
+            .map_err(|_| VersionError::Invalid(s.to_string()))?
+            .unwrap_or(0);
         let tweak: Option<u32> = parts
             .next()
             .map(str::parse)

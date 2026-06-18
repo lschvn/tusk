@@ -5,26 +5,26 @@
     "cpu_count": "12",
     "cpu_model": "QEMU Virtual CPU version 2.5+",
     "kernel": "6.8.0-124-generic",
-    "memory": "Mem:            23Gi       1,7Gi        16Gi       392Ki       5,9Gi        21Gi",
+    "memory": "Mem:            23Gi       1,7Gi        15Gi       392Ki       7,0Gi        21Gi",
     "os": "Ubuntu 24.04.4 LTS",
     "php_version": "PHP 8.3.13 (cli) (built: Nov  1 2024 06:38:49) (NTS)\nCopyright (c) The PHP Group\nZend Engine v4.3.13, Copyright (c) Zend Technologies",
-    "tusk_commit": "f536b440b15cab2fbf0989abc6ed08afbbeb465a",
-    "tusk_commit_short": "f536b44",
+    "tusk_commit": "86aa094fc6bc092114bec6b91493d5a695b0162d",
+    "tusk_commit_short": "86aa094",
     "tusk_version": "tusk 0.1.0"
   },
   "fixture": "large",
   "fixture_path": "/home/louis/work/tusk/benchmarks/fixtures/large",
   "summary": {
-    "cold_speedup": 0.91,
+    "cold_speedup": 0.71,
     "composer_success": true,
     "notes": [],
     "tusk_success": true,
-    "warm_speedup_avg": 2.74,
-    "warm_speedup_min": 2.58
+    "warm_speedup_avg": 1.38,
+    "warm_speedup_min": 1.15
   },
   "tools": {
     "composer": {
-      "cold_seconds": 1.08,
+      "cold_seconds": 1.202,
       "composer_cache_dir": "/home/louis/.composer/cache",
       "disk_bytes": 15607007,
       "error": null,
@@ -33,32 +33,32 @@
       "tool": "composer",
       "total_deps_resolved": 55,
       "tusk_cache_dir": "/home/louis/.cache/tusk",
-      "warm_avg_seconds": 0.252,
-      "warm_max_seconds": 0.252,
-      "warm_min_seconds": 0.251,
+      "warm_avg_seconds": 0.25,
+      "warm_max_seconds": 0.251,
+      "warm_min_seconds": 0.249,
       "warm_seconds": [
+        0.249,
         0.251,
-        0.252,
         0.251
       ]
     },
     "tusk": {
-      "cold_seconds": 0.98,
+      "cold_seconds": 0.854,
       "composer_cache_dir": "/home/louis/.composer/cache",
-      "disk_bytes": 17002004,
+      "disk_bytes": 12615845,
       "error": null,
       "packages_installed": 38,
       "success": true,
       "tool": "tusk",
       "total_deps_resolved": 38,
       "tusk_cache_dir": "/home/louis/.cache/tusk",
-      "warm_avg_seconds": 0.691,
-      "warm_max_seconds": 0.752,
-      "warm_min_seconds": 0.651,
+      "warm_avg_seconds": 0.344,
+      "warm_max_seconds": 0.448,
+      "warm_min_seconds": 0.289,
       "warm_seconds": [
-        0.752,
-        0.669,
-        0.651
+        0.295,
+        0.448,
+        0.289
       ]
     }
   },

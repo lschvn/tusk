@@ -55,3 +55,39 @@ fn parse_stability_suffixes() {
         assert_eq!(v.stability_n, *expected_n, "stability_n for {input}");
     }
 }
+
+// Regression: short version forms like `2.0` and `1.1` (returned by
+// Packagist's p2 endpoint for packages like psr/http-message) must parse.
+// The missing minor/patch default to 0.
+#[test]
+fn parse_short_version_two_part() {
+    let v = Version::parse("2.0").expect("2.0 must parse (short form)");
+    assert_eq!(v.major, 2);
+    assert_eq!(v.minor, 0);
+    assert_eq!(v.patch, 0, "missing patch defaults to 0");
+    assert_eq!(v.tweak, None);
+    assert_eq!(v.to_composer_string(), "2.0.0");
+}
+
+#[test]
+fn parse_short_version_three_part_intact() {
+    // Sanity: full 3-part versions still parse unchanged.
+    let v = Version::parse("1.1.0").expect("1.1.0 must parse");
+    assert_eq!(v.major, 1);
+    assert_eq!(v.minor, 1);
+    assert_eq!(v.patch, 0);
+}
+
+#[test]
+fn short_version_satisfies_caret_constraint() {
+    // The whole point: `^1.1` means >= 1.1.0 < 2.0.0, and `1.1` (short form)
+    // must be a valid candidate. The medium benchmark fixture depends on this.
+    use tusk_semver::Constraint;
+    let v11 = Version::parse("1.1").unwrap();
+    let v20 = Version::parse("2.0").unwrap();
+    let caret = Constraint::parse("^1.1").unwrap();
+    assert!(caret.matches(&v11), "^1.1 must match version 1.1");
+    let caret_two = Constraint::parse("^2.0").unwrap();
+    assert!(caret_two.matches(&v20), "^2.0 must match version 2.0");
+    assert!(!caret.matches(&v20), "^1.1 must NOT match 2.0");
+}

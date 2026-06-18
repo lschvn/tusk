@@ -64,6 +64,8 @@ insta = { version = "1", features = ["yaml", "json"] }
 tempfile = "3"
 proptest = "1"
 chrono = { version = "0.4", features = ["serde"] }
+futures = "0.3"
+async-trait = "0.1"
 
 [workspace.dependencies.tusk-semver]
 path = "crates/tusk-semver"

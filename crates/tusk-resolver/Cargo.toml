@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 pubgrub = { workspace = true }
 thiserror = { workspace = true }
+futures = { workspace = true }
 tusk-semver = { workspace = true }
 tusk-manifest = { workspace = true }
 tusk-registry = { workspace = true }
