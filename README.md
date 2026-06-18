@@ -14,6 +14,46 @@ For the full mission, architecture, and Phase-1 scope, see **[GOAL.md](./GOAL.md
 
 **Phase 1 — the package manager.** See [ROADMAP.md](./ROADMAP.md) for the work breakdown.
 
+## Install
+
+Install the latest release with a single command — works on Linux and macOS,
+x86_64 and arm64:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lschvn/tusk/main/install.sh | bash
+```
+
+Prefer `wget`?
+
+```bash
+wget -qO- https://raw.githubusercontent.com/lschvn/tusk/main/install.sh | bash
+```
+
+The installer downloads the prebuilt binary for your platform into `~/.tusk/bin`
+and adds it to your `PATH`. Restart your shell (or `source` your shell rc) and:
+
+```bash
+tusk --help
+```
+
+<details>
+<summary>Advanced options</summary>
+
+```bash
+# Install a specific version
+curl -fsSL https://raw.githubusercontent.com/lschvn/tusk/main/install.sh | bash -s v0.1.0
+
+# Install to a custom directory (default: ~/.tusk)
+TUSK_INSTALL=/opt/tusk curl -fsSL https://raw.githubusercontent.com/lschvn/tusk/main/install.sh | bash
+```
+
+If no prebuilt binary exists for your platform, the installer falls back to
+building from source with your local Rust toolchain (install Rust from
+<https://rustup.rs>). To uninstall, just remove the install directory
+(`rm -rf ~/.tusk`) and the `# tusk` block from your shell rc file.
+
+</details>
+
 ## Quick start (once built)
 
 ```bash
