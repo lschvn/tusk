@@ -1,0 +1,37 @@
+{
+    "_readme": ["This file locks the dependencies of your project to a known state"],
+    "content-hash": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
+    "packages": [
+        {
+            "name": "acme/foo",
+            "version": "1.2.3",
+            "dist": {
+                "url": "https://example.com/acme-foo-1.2.3.zip",
+                "type": "zip",
+                "shasum": "abc123def456",
+                "reference": "git-ref-123"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Acme\\Foo\\": "src/"
+                }
+            },
+            "require": {
+                "php": "^8.1"
+            },
+            "license": ["MIT"],
+            "description": "A test package"
+        }
+    ],
+    "packages-dev": [],
+    "aliases": [],
+    "minimum-stability": "stable",
+    "stability-flags": {},
+    "prefer-stable": true,
+    "prefer-lowest": false,
+    "platform": {
+        "php": "^8.1"
+    },
+    "platform-dev": {}
+}
