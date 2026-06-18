@@ -7,11 +7,8 @@
 #![forbid(unsafe_code)]
 
 mod client;
-mod mock;
-mod model;
-mod packagist;
 
-pub use client::{Registry, RegistryError};
-pub use mock::MockRegistry;
-pub use model::{DistRef, PackageMetadata, PackageVersion, VersionConstraint};
-pub use packagist::PackagistClient;
+pub use client::{
+    DistRef, MockRegistry, PackageMetadata, PackageVersion, PackagistClient, Registry,
+    RegistryError,
+};

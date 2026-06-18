@@ -93,11 +93,13 @@ async fn packagist_client_surfaces_not_found_for_404_response() {
     // We don't pin the exact variant here (Network vs NotFound) since the
     // task plan leaves that choice for task 7. This test simply confirms
     // the failure is *typed* and reaches us, not a panic.
-    let _ = match err {
-        RegistryError::Network(_) => {}
-        RegistryError::Parse(_) => {}
-        RegistryError::NotFound(_) => {}
-    };
+    assert!(
+        matches!(
+            err,
+            RegistryError::Network(_) | RegistryError::Parse(_) | RegistryError::NotFound(_)
+        ),
+        "expected a typed RegistryError, got {err:?}"
+    );
     // Confirm the request did reach the configured server.
     let _ = metadata(vec![version(0, 0, 0, "x", "y")]);
     server.verify().await;
