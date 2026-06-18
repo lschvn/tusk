@@ -29,12 +29,41 @@ pub enum RegistryError {
 /// a mock — no real network.
 #[async_trait]
 pub trait Registry: Send + Sync {
-    /// Fetch all version metadata for a package. Implementations should cache.
+    /// Fetch all version metadata for a single package.
+    ///
+    /// Default implementation batches a single-element request via
+    /// `batch_package_metadata`. Implementations may override for efficiency.
     async fn package_metadata(
         &self,
         vendor: &str,
         package: &str,
-    ) -> Result<PackageMetadata, RegistryError>;
+    ) -> Result<PackageMetadata, RegistryError> {
+        let results = self
+            .batch_package_metadata(&[(vendor.to_string(), package.to_string())])
+            .await?;
+        results
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| Err(RegistryError::NotFound(format!("{vendor}/{package}"))))
+    }
+
+    /// Batch-fetch metadata for many packages in parallel.
+    ///
+    /// Implementations should use HTTP/2 multiplexing when possible so a
+    /// BFS resolution layer of N packages takes ~1 round-trip to fetch.
+    /// The default implementation spawns N parallel `package_metadata` calls,
+    /// which is correct but not multiplexed.
+    async fn batch_package_metadata(
+        &self,
+        packages: &[(String, String)],
+    ) -> Result<Vec<Result<PackageMetadata, RegistryError>>, RegistryError> {
+        let mut results = Vec::with_capacity(packages.len());
+        for (vendor, package) in packages {
+            let r = self.package_metadata(vendor, package).await;
+            results.push(r);
+        }
+        Ok(results)
+    }
 }
 
 /// All known versions of a single package.
@@ -150,6 +179,91 @@ impl Registry for PackagistClient {
         }
 
         Ok(meta)
+    }
+
+    /// Batch-fetch via libcurl multi-handle with HTTP/2 multiplexing.
+    ///
+    /// This is the speed-critical path for cold installs without a lockfile.
+    /// Instead of N parallel reqwest requests (each opens a separate TLS
+    /// connection), we make one curl multi call that multiplexes all
+    /// requests over a single HTTP/2 connection to `repo.packagist.org`.
+    async fn batch_package_metadata(
+        &self,
+        packages: &[(String, String)],
+    ) -> Result<Vec<Result<PackageMetadata, RegistryError>>, RegistryError> {
+        if packages.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Build full keys and check cache.
+        let keys: Vec<String> = packages
+            .iter()
+            .map(|(v, p)| format!("{v}/{p}"))
+            .collect();
+
+        let mut to_fetch: Vec<(usize, String)> = Vec::new(); // (original_index, key)
+        let mut results: Vec<Option<PackageMetadata>> = (0..keys.len()).map(|_| None).collect();
+
+        {
+            let cache = self.cache.read();
+            for (i, key) in keys.iter().enumerate() {
+                if let Some(meta) = cache.get(key) {
+                    results[i] = Some(meta.clone());
+                } else {
+                    to_fetch.push((i, key.clone()));
+                }
+            }
+        }
+
+        if to_fetch.is_empty() {
+            return Ok(results
+                .into_iter()
+                .map(|r| r.ok_or_else(|| RegistryError::Parse("missing".to_string())))
+                .collect());
+        }
+
+        // Fetch all cache misses in a single libcurl multi call (HTTP/2 multiplexed).
+        let fetch_keys: Vec<String> = to_fetch.iter().map(|(_, k)| k.clone()).collect();
+        let base_url = self.base_url.clone();
+
+        let fetched = tokio::task::spawn_blocking(move || {
+            crate::curl_metadata::fetch_batch(&base_url, &fetch_keys, parse_p2_response)
+        })
+        .await
+        .map_err(|e| RegistryError::Network(format!("join error: {e}")))?
+        .map_err(|e| RegistryError::Network(e.to_string()))?;
+
+        // Store successful results in cache and fill in the output vec.
+        let mut cache_writes = Vec::new();
+        for (slot, fetch_result) in to_fetch.iter().zip(fetched.into_iter()) {
+            let (orig_idx, key) = slot;
+            if let Ok(meta) = fetch_result {
+                cache_writes.push((key.clone(), meta.clone()));
+                results[*orig_idx] = Some(meta);
+            }
+            // Err: leave as None; will become Err in the output map below
+        }
+        if !cache_writes.is_empty() {
+            let mut cache = self.cache.write();
+            for (k, m) in cache_writes {
+                cache.insert(k, m);
+            }
+        }
+
+        Ok(results
+            .into_iter()
+            .enumerate()
+            .map(|(i, r)| {
+                r.ok_or_else(|| {
+                    // Reconstruct the key for the error
+                    let key = keys
+                        .get(i)
+                        .cloned()
+                        .unwrap_or_else(|| "<unknown>".to_string());
+                    RegistryError::Parse(format!("metadata for {key} not fetched"))
+                })
+            })
+            .collect())
     }
 }
 

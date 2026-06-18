@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 mod client;
+mod curl_metadata;
 
 pub use client::{
     DistRef, MockRegistry, PackageMetadata, PackageVersion, PackagistClient, Registry,

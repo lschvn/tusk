@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 async-trait = "0.1"
+curl = { workspace = true }
 parking_lot = "0.12"
 serde = { workspace = true }
 serde_json = { workspace = true }

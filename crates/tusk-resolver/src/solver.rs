@@ -1,9 +1,9 @@
 //! Dependency resolver — greedy resolution with constraint intersection.
 //!
-//! Strategy: process the dependency queue breadth-first. For each package,
-//! collect ALL constraints on it, then pick the highest version satisfying all.
-//! If no version satisfies all constraints, produce a conflict error naming
-//! the packages and their constraints.
+//! Strategy: process the dependency queue breadth-first in **batches**. For
+//! each layer, collect all un-fetched packages and call the registry's
+//! `batch_package_metadata` once. Implementations with HTTP/2 multiplexing
+//! (libcurl multi) collapse N round-trips into 1.
 //!
 //! This is simpler than full `PubGrub` backtracking but handles the vast majority
 //! of real-world Composer dependency graphs correctly. Full `PubGrub` integration
@@ -11,7 +11,7 @@
 
 #![allow(clippy::all)]
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 
 use thiserror::Error;
 use tusk_manifest::RequireMap;
@@ -63,10 +63,11 @@ impl<R: Registry> Resolver<R> {
     /// `root` = production deps from `require`.
     /// `dev` = dev deps from `require-dev` (only resolved if `opts.include_dev`).
     ///
-    /// Metadata fetching is **parallel** with bounded concurrency (16 concurrent
-    /// requests). This is the same strategy Bun uses — for projects with N
-    /// packages, cold install time drops from `O(N × RTT)` to `O(ceil(N / 16) × RTT)`.
-    /// For a 55-package project on a 100ms-RTT network, that's ~5.5s → ~350ms.
+    /// Metadata fetching is **batched** per BFS layer. For each layer, all
+    /// un-fetched packages are sent to `batch_package_metadata` in a single
+    /// call. With HTTP/2 multiplexing, this is ~1 round-trip per layer
+    /// instead of N (one per package). For a 55-package project on a
+    /// 100ms-RTT network, that's ~5.5s → ~400ms.
     #[allow(clippy::too_many_lines)]
     pub async fn resolve(
         &self,
@@ -74,15 +75,12 @@ impl<R: Registry> Resolver<R> {
         dev: RequireMap,
         opts: ResolveOptions,
     ) -> Result<Vec<ResolvedDependency>, ResolveError> {
-        use futures::stream::{FuturesUnordered, StreamExt};
+        const BATCH_SIZE: usize = 64; // Max packages per layer (matches Bun's max-in-flight)
 
-        const CONCURRENCY: usize = 64; // Matches Bun's max-in-flight HTTP requests
-                                       // constraint_sources[pkg_name] = [(constraint_str, requesting_pkg)]
+        // constraint_sources[pkg_name] = [(constraint_str, requesting_pkg)]
         let mut constraints: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
         // BFS queue of packages to fetch metadata for
         let mut to_fetch: VecDeque<String> = VecDeque::new();
-        // In-flight set (for dedup — don't queue the same package twice)
-        let mut in_flight: BTreeSet<String> = BTreeSet::new();
         // Resolved packages
         let mut resolved: BTreeMap<String, ResolvedDependency> = BTreeMap::new();
 
@@ -104,133 +102,118 @@ impl<R: Registry> Resolver<R> {
             }
         }
 
-        // Build a stream of in-flight metadata fetches. Use FuturesUnordered
-        // for N-way concurrent fetch with backpressure on the in_flight set.
-        let mut in_progress: FuturesUnordered<
-            std::pin::Pin<
-                Box<
-                    dyn std::future::Future<
-                            Output = (
-                                String,
-                                Result<
-                                    tusk_registry::PackageMetadata,
-                                    tusk_registry::RegistryError,
-                                >,
-                            ),
-                        > + Send,
-                >,
-            >,
-        > = FuturesUnordered::new();
-
-        while !to_fetch.is_empty() || !in_progress.is_empty() {
-            // Fill the in-flight queue up to CONCURRENCY
-            while in_progress.len() < CONCURRENCY {
-                // Pop the next package that's not already in flight or resolved
-                let next = loop {
-                    let Some(p) = to_fetch.pop_front() else {
-                        break None;
-                    };
-                    if is_platform_requirement(&p)
-                        || resolved.contains_key(&p)
-                        || in_flight.contains(&p)
-                    {
-                        continue;
-                    }
-                    break Some(p);
-                };
-                let Some(pkg_name) = next else {
+        // BFS: process the queue layer by layer, batch-fetching metadata.
+        while !to_fetch.is_empty() {
+            // Drain up to BATCH_SIZE packages that are neither resolved nor
+            // platform-only requirements.
+            let mut batch: Vec<(String, String)> = Vec::with_capacity(BATCH_SIZE);
+            while batch.len() < BATCH_SIZE {
+                let Some(p) = to_fetch.pop_front() else {
                     break;
                 };
-                in_flight.insert(pkg_name.clone());
-                let (vendor, package) = split_name_owned(&pkg_name);
-                in_progress.push(Box::pin(async move {
-                    let res = self.registry.package_metadata(&vendor, &package).await;
-                    (pkg_name, res)
-                }));
+                if is_platform_requirement(&p) || resolved.contains_key(&p) {
+                    continue;
+                }
+                // Skip duplicates within the current batch (cheap, the registry
+                // will also dedup via its in-process cache).
+                if batch.iter().any(|(v, pkg)| format!("{v}/{pkg}") == p) {
+                    continue;
+                }
+                let (vendor, package) = split_name_owned(&p);
+                batch.push((vendor, package));
             }
 
-            // If no work in flight, drain remaining queue (only platform-reqs left)
-            if in_progress.is_empty() {
-                break;
+            if batch.is_empty() {
+                continue;
             }
 
-            // Wait for one to complete
-            let Some((pkg_name, metadata_result)) = in_progress.next().await else {
-                break;
-            };
-            in_flight.remove(&pkg_name);
+            // One batch call — HTTP/2 multiplexed when the registry supports it.
+            let results = self
+                .registry
+                .batch_package_metadata(&batch)
+                .await
+                .map_err(|source| ResolveError::Registry {
+                    package: "<batch>".to_string(),
+                    source,
+                })?;
 
-            let metadata = metadata_result.map_err(|source| ResolveError::Registry {
-                package: pkg_name.clone(),
-                source,
-            })?;
+            // Process each result.
+            for ((vendor, package), metadata_result) in batch.into_iter().zip(results.into_iter())
+            {
+                let pkg_name = format!("{vendor}/{package}");
 
-            // Collect all constraints on this package
-            let pkg_constraints = constraints.get(&pkg_name).cloned().unwrap_or_default();
+                let metadata = metadata_result.map_err(|source| ResolveError::Registry {
+                    package: pkg_name.clone(),
+                    source,
+                })?;
 
-            // Parse all constraints
-            let parsed_constraints: Vec<(Constraint, String, String)> = pkg_constraints
-                .iter()
-                .map(|(cs, src)| match Constraint::parse(cs) {
-                    Ok(c) => (c, cs.clone(), src.clone()),
-                    Err(_) => (Constraint::parse("*").unwrap(), cs.clone(), src.clone()),
-                })
-                .collect();
+                // Collect all constraints on this package
+                let pkg_constraints = constraints.get(&pkg_name).cloned().unwrap_or_default();
 
-            // Find highest version satisfying ALL constraints
-            let mut candidates: Vec<&PackageVersion> = metadata
-                .versions
-                .iter()
-                .filter(|pv| {
-                    parsed_constraints
-                        .iter()
-                        .all(|(c, _, _)| c.matches(&pv.version))
-                })
-                .collect();
-
-            // Sort descending by version
-            candidates.sort_by(|a, b| b.version.cmp_key().cmp(&a.version.cmp_key()));
-
-            let Some(chosen) = candidates.first() else {
-                // No version satisfies all constraints → conflict
-                let constraint_summary = pkg_constraints
+                // Parse all constraints
+                let parsed_constraints: Vec<(Constraint, String, String)> = pkg_constraints
                     .iter()
-                    .map(|(cs, src)| format!("  {src} requires {pkg_name}: {cs}"))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                let available = metadata
+                    .map(|(cs, src)| match Constraint::parse(cs) {
+                        Ok(c) => (c, cs.clone(), src.clone()),
+                        Err(_) => (Constraint::parse("*").unwrap(), cs.clone(), src.clone()),
+                    })
+                    .collect();
+
+                // Find highest version satisfying ALL constraints
+                let mut candidates: Vec<&PackageVersion> = metadata
                     .versions
                     .iter()
-                    .map(|pv| pv.version.to_composer_string())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                return Err(ResolveError::Conflict(format!(
-                    "No version of {pkg_name} satisfies all constraints:\n{constraint_summary}\n\nAvailable versions: {available}"
-                )));
-            };
+                    .filter(|pv| {
+                        parsed_constraints
+                            .iter()
+                            .all(|(c, _, _)| c.matches(&pv.version))
+                    })
+                    .collect();
 
-            // Record resolution
-            let resolved_dep = ResolvedDependency {
-                name: pkg_name.clone(),
-                version: chosen.version.clone(),
-                require: chosen.require.clone(),
-                dist: chosen.dist.clone(),
-            };
-            resolved.insert(pkg_name.clone(), resolved_dep);
+                // Sort descending by version
+                candidates.sort_by(|a, b| b.version.cmp_key().cmp(&a.version.cmp_key()));
 
-            // Queue transitive dependencies
-            for (dep_name, dep_constraint) in &chosen.require {
-                if is_platform_requirement(dep_name) {
-                    continue;
+                let Some(chosen) = candidates.first() else {
+                    // No version satisfies all constraints → conflict
+                    let constraint_summary = pkg_constraints
+                        .iter()
+                        .map(|(cs, src)| format!("  {src} requires {pkg_name}: {cs}"))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    let available = metadata
+                        .versions
+                        .iter()
+                        .map(|pv| pv.version.to_composer_string())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    return Err(ResolveError::Conflict(format!(
+                        "No version of {pkg_name} satisfies all constraints:\n{constraint_summary}\n\nAvailable versions: {available}"
+                    )));
+                };
+
+                // Record resolution
+                let resolved_dep = ResolvedDependency {
+                    name: pkg_name.clone(),
+                    version: chosen.version.clone(),
+                    require: chosen.require.clone(),
+                    dist: chosen.dist.clone(),
+                };
+                resolved.insert(pkg_name.clone(), resolved_dep);
+
+                // Queue transitive dependencies
+                for (dep_name, dep_constraint) in &chosen.require {
+                    if is_platform_requirement(dep_name) {
+                        continue;
+                    }
+                    if resolved.contains_key(dep_name) {
+                        continue;
+                    }
+                    constraints
+                        .entry(dep_name.clone())
+                        .or_default()
+                        .push((dep_constraint.clone(), pkg_name.clone()));
+                    to_fetch.push_back(dep_name.clone());
                 }
-                if resolved.contains_key(dep_name) {
-                    continue;
-                }
-                constraints
-                    .entry(dep_name.clone())
-                    .or_default()
-                    .push((dep_constraint.clone(), pkg_name.clone()));
-                to_fetch.push_back(dep_name.clone());
             }
         }
 
