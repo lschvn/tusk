@@ -66,6 +66,7 @@ proptest = "1"
 chrono = { version = "0.4", features = ["serde"] }
 futures = "0.3"
 async-trait = "0.1"
+curl = "0.4"
 
 [workspace.dependencies.tusk-semver]
 path = "crates/tusk-semver"

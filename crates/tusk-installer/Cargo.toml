@@ -22,6 +22,7 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 url = { workspace = true }
 futures = "0.3"
+curl = { workspace = true }
 tusk-semver = { workspace = true }
 tusk-manifest = { workspace = true }
 tusk-registry = { workspace = true }

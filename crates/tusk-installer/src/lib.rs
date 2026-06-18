@@ -9,10 +9,12 @@
 #![forbid(unsafe_code)]
 
 mod cache;
+mod curl_downloader;
 mod download;
 mod extract;
 mod installer;
 
 pub use cache::Cache;
-pub use download::{DownloadError, Downloader};
+pub use curl_downloader::{download_batch, CurlError};
+pub use download::{verify_shasum, DownloadError, Downloader};
 pub use installer::{InstallError, Installer};
