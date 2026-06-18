@@ -24,3 +24,13 @@ fn parse_v_prefix_tolerated_and_stripped_on_output() {
     assert!(v.is_v_prefixed, "v-prefix on input should be recorded");
     assert_eq!(v.to_composer_string(), "2.5.0", "v-prefix must not appear on output");
 }
+
+#[test]
+fn parse_four_component_sets_tweak() {
+    let v = Version::parse("1.2.3.4").expect("1.2.3.4 must parse");
+    assert_eq!(v.major, 1);
+    assert_eq!(v.minor, 2);
+    assert_eq!(v.patch, 3);
+    assert_eq!(v.tweak, Some(4));
+    assert_eq!(v.stability, Stability::Stable);
+}

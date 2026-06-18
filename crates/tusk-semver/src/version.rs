@@ -84,11 +84,19 @@ impl Version {
             .next()
             .and_then(|p| p.parse().ok())
             .ok_or_else(|| VersionError::Invalid(s.to_string()))?;
+        let tweak: Option<u32> = parts
+            .next()
+            .map(|p| p.parse())
+            .transpose()
+            .map_err(|_| VersionError::Invalid(s.to_string()))?;
+        if parts.next().is_some() {
+            return Err(VersionError::Invalid(s.to_string()));
+        }
         Ok(Self {
             major,
             minor,
             patch,
-            tweak: None,
+            tweak,
             stability: Stability::Stable,
             stability_n: None,
             dev_branch: None,
@@ -97,6 +105,9 @@ impl Version {
     }
 
     pub fn to_composer_string(&self) -> String {
-        format!("{}.{}.{}", self.major, self.minor, self.patch)
+        match self.tweak {
+            Some(t) => format!("{}.{}.{}.{}", self.major, self.minor, self.patch, t),
+            None => format!("{}.{}.{}", self.major, self.minor, self.patch),
+        }
     }
 }

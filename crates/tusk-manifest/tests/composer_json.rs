@@ -8,6 +8,7 @@ use tusk_manifest::ComposerJson;
 const MINIMAL: &str = include_str!("../../../fixtures/manifest/minimal.json");
 const MULTIPATH_PSR4: &str = include_str!("../../../fixtures/manifest/multipath-psr4.json");
 const AUTOLOAD_FILES: &str = include_str!("../../../fixtures/manifest/autoload-files.json");
+const CLASSMAP_PSR0: &str = include_str!("../../../fixtures/manifest/classmap-psr0.json");
 
 #[test]
 fn from_str_minimal_succeeds_and_exposes_php_require() {

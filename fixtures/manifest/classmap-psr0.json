@@ -1,0 +1,20 @@
+{
+    "name": "acme/legacy",
+    "description": "A package that mixes PSR-0 with classmap autoloading.",
+    "type": "library",
+    "require": {
+        "php": "^8.1"
+    },
+    "autoload": {
+        "psr-0": {
+            "Zend_": "library/"
+        },
+        "classmap": [
+            "src/Legacy",
+            "ext/legacy/Compat.php"
+        ],
+        "exclude-from-classmap": [
+            "src/Legacy/Internal"
+        ]
+    }
+}
