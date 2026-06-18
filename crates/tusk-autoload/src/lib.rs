@@ -11,6 +11,5 @@ mod classmap;
 mod generator;
 mod php_writer;
 
-pub use autoload_php::AutoloadPhp;
 pub use classmap::ClassMap;
-pub use generator::{AutoloadGenerator, AutoloadSpec};
+pub use generator::{AutoloadError, AutoloadGenerator, AutoloadSpec, InstalledPackage};

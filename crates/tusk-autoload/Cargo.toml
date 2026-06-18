@@ -13,6 +13,8 @@ workspace = true
 [dependencies]
 thiserror = { workspace = true }
 indexmap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 tusk-semver = { workspace = true }
 tusk-manifest = { workspace = true }
 tusk-resolver = { workspace = true }
