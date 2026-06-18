@@ -37,7 +37,11 @@ pub type Autoload = indexmap::IndexMap<String, serde_json::Value>;
 pub type AutoloadDev = indexmap::IndexMap<String, serde_json::Value>;
 
 impl ComposerJson {
-    pub fn from_str(_s: &str) -> Result<Self, ManifestError> {
-        unimplemented!()
+    /// Parse a `composer.json` document from a string.
+    ///
+    /// Forward-compatible: unknown top-level fields are ignored, and any of the
+    /// known sections may be absent. Invalid JSON is the only error case.
+    pub fn from_str(s: &str) -> Result<Self, ManifestError> {
+        serde_json::from_str(s).map_err(|e| ManifestError::Json(e.to_string()))
     }
 }
