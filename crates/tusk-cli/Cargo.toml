@@ -20,6 +20,10 @@ tokio = { workspace = true }
 anyhow = { workspace = true }
 indicatif = { workspace = true }
 thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+indexmap = { workspace = true }
+sha1_smol = { workspace = true }
 tusk-semver = { workspace = true }
 tusk-manifest = { workspace = true }
 tusk-registry = { workspace = true }
@@ -33,3 +37,7 @@ predicates = { workspace = true }
 tempfile = { workspace = true }
 insta = { workspace = true }
 wiremock = { workspace = true }
+zip = { workspace = true }
+sha1_smol = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
