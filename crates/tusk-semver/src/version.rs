@@ -1,5 +1,5 @@
-//! Stub: filled in at Step 1 (TDD).
-#![allow(dead_code, clippy::all)]
+//! Composer version + constraint parser. See GOAL.md §7.1.
+#![allow(clippy::all)]
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -95,7 +95,7 @@ impl Version {
             .ok_or_else(|| VersionError::Invalid(s.to_string()))?;
         let tweak: Option<u32> = parts
             .next()
-            .map(|p| p.parse())
+            .map(str::parse)
             .transpose()
             .map_err(|_| VersionError::Invalid(s.to_string()))?;
         if parts.next().is_some() {
