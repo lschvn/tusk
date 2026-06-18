@@ -3,8 +3,20 @@
 tusk vs composer benchmark harness.
 
 Runs both `tusk install` and `composer install` against a fixture project
-(composer.json) and times cold and warm cache runs. Writes a JSON result
-file with per-tool timings, success flag, package count, and vendor size.
+(composer.json) and times three scenarios for each tool:
+
+  1. cold_no_lockfile  — caches cleared AND composer.lock removed.
+                         The tool must resolve dependencies (no fast path).
+  2. cold_with_lockfile — caches cleared, composer.lock KEPT (created
+                         by the prior cold_no_lock run). The lockfile
+                         fast path skips the resolver; only download
+                         and extract remain. This is the realistic CI
+                         scenario: you `git pull` an unchanged lockfile
+                         and reinstall into a fresh container.
+  3. warm              — N re-runs against a warm archive cache.
+
+Writes a JSON result file with per-tool timings, success flag, package
+count, and vendor size.
 
 Usage:
     python3 harness.py <fixture_dir> --output <json_path> [--runs N]
@@ -56,14 +68,38 @@ INSTALL_TIMEOUT_SECONDS = 600
 # ---------------------------------------------------------------------------
 
 
-def clear_cache_dir(path: str) -> None:
+def clear_cache_dir(path: str, preserve: list[str] | None = None) -> None:
     """Recursively delete a cache directory. Errors are ignored on purpose:
-    a missing directory is not an error (the cache may not exist yet)."""
+    a missing directory is not an error (the cache may not exist yet).
+
+    `preserve` is an optional list of basenames (e.g. ["composer.lock"]) that
+    should be kept if present in the tree. Note: in practice, the lockfile
+    lives in the per-fixture work_dir, not the cache, so this is here for
+    future use (e.g. a composer-style key+value cache)."""
     if not path:
         return
     p = Path(path)
-    if p.exists():
+    if not p.exists():
+        return
+    if not preserve:
         shutil.rmtree(p, ignore_errors=True)
+        return
+    # Move preserved entries out, rmtree, then move them back.
+    sandbox = p.parent / f".{p.name}_preserve_{os.getpid()}"
+    sandbox.mkdir(exist_ok=True)
+    moved: list[tuple[Path, Path]] = []
+    for name in preserve:
+        src = p / name
+        if src.exists():
+            dst = sandbox / name
+            shutil.move(str(src), str(dst))
+            moved.append((src, dst))
+    shutil.rmtree(p, ignore_errors=True)
+    p.mkdir(parents=True, exist_ok=True)
+    for src, dst in moved:
+        if dst.exists():
+            shutil.move(str(dst), str(src))
+    shutil.rmtree(sandbox, ignore_errors=True)
 
 
 def copy_fixture(fixture_dir: Path, work_dir: Path) -> None:
@@ -174,108 +210,42 @@ def build_env() -> dict[str, str]:
     return env
 
 
-def run_composer(
-    work_dir: Path, env: dict[str, str]
+def tool_command(tool_name: str) -> list[str]:
+    """Return the base install command for a given tool."""
+    if tool_name == "tusk":
+        return [TUSK_BIN, "install", "--quiet"]
+    if tool_name == "composer":
+        return [COMPOSER_BIN, "install", "--no-interaction", "--no-progress"]
+    raise ValueError(f"unknown tool: {tool_name}")
+
+
+def tool_cache_dirs(tool_name: str) -> list[str]:
+    """Return the list of cache directories to clear before a cold run."""
+    if tool_name == "tusk":
+        return [TUSK_CACHE_DIR]
+    if tool_name == "composer":
+        return [COMPOSER_CACHE_DIR, str(Path(COMPOSER_HOME_DIR) / "cache")]
+    raise ValueError(f"unknown tool: {tool_name}")
+
+
+def run_install(
+    cmd: list[str], work_dir: Path, env: dict[str, str]
 ) -> dict[str, Any]:
-    """Run `composer install` in work_dir, then re-run N-1 times for warm.
+    """Run a single install command and return a small result dict.
 
-    Returns a result dict with cold_seconds, warm_seconds (list), and
-    metadata. On failure, captures the error and continues."""
-    base = [COMPOSER_BIN, "install", "--no-interaction", "--no-progress"]
-    # Cold run
-    rc, cold_seconds, stderr = run_command(base, work_dir, env=env)
-    if rc != 0:
-        return {
-            "success": False,
-            "cold_seconds": round(cold_seconds, 3),
-            "warm_seconds": [],
-            "warm_avg_seconds": None,
-            "warm_min_seconds": None,
-            "warm_max_seconds": None,
-            "packages_installed": 0,
-            "disk_bytes": 0,
-            "error": stderr.strip().splitlines()[-20:] if stderr else ["unknown error"],
-        }
-    # Warm runs (use the existing work_dir; vendor/ already populated)
-    warm_times: list[float] = []
-    for _ in range(N_WARM_RUNS):
-        rc, secs, stderr = run_command(base, work_dir, env=env)
-        if rc != 0:
-            return {
-                "success": False,
-                "cold_seconds": round(cold_seconds, 3),
-                "warm_seconds": [round(t, 3) for t in warm_times],
-                "warm_avg_seconds": None,
-                "warm_min_seconds": None,
-                "warm_max_seconds": None,
-                "packages_installed": count_vendor_packages(work_dir),
-                "disk_bytes": disk_usage_bytes(work_dir / "vendor"),
-                "error": (stderr.strip().splitlines()[-20:] if stderr else ["unknown"])
-                + [f"(warm run failed after {len(warm_times)} successful warm runs)"],
-            }
-        warm_times.append(secs)
+    Always runs the install exactly once; the caller decides how many
+    times to repeat for warm averaging. This is the unit of work that
+    the orchestrator (`benchmark_tool`) composes into the three
+    scenarios: cold_no_lockfile, cold_with_lockfile, warm."""
+    rc, secs, stderr = run_command(cmd, work_dir, env=env)
     return {
-        "success": True,
-        "cold_seconds": round(cold_seconds, 3),
-        "warm_seconds": [round(t, 3) for t in warm_times],
-        "warm_avg_seconds": round(sum(warm_times) / len(warm_times), 3)
-        if warm_times
-        else None,
-        "warm_min_seconds": round(min(warm_times), 3) if warm_times else None,
-        "warm_max_seconds": round(max(warm_times), 3) if warm_times else None,
-        "packages_installed": count_vendor_packages(work_dir),
-        "disk_bytes": disk_usage_bytes(work_dir / "vendor"),
-        "error": None,
-    }
-
-
-def run_tusk(
-    work_dir: Path, env: dict[str, str]
-) -> dict[str, Any]:
-    """Run `tusk install` in work_dir, then re-run N-1 times for warm."""
-    base = [TUSK_BIN, "install", "--quiet"]
-    rc, cold_seconds, stderr = run_command(base, work_dir, env=env)
-    if rc != 0:
-        return {
-            "success": False,
-            "cold_seconds": round(cold_seconds, 3),
-            "warm_seconds": [],
-            "warm_avg_seconds": None,
-            "warm_min_seconds": None,
-            "warm_max_seconds": None,
-            "packages_installed": 0,
-            "disk_bytes": 0,
-            "error": stderr.strip().splitlines()[-20:] if stderr else ["unknown error"],
-        }
-    warm_times: list[float] = []
-    for _ in range(N_WARM_RUNS):
-        rc, secs, stderr = run_command(base, work_dir, env=env)
-        if rc != 0:
-            return {
-                "success": False,
-                "cold_seconds": round(cold_seconds, 3),
-                "warm_seconds": [round(t, 3) for t in warm_times],
-                "warm_avg_seconds": None,
-                "warm_min_seconds": None,
-                "warm_max_seconds": None,
-                "packages_installed": count_vendor_packages(work_dir),
-                "disk_bytes": disk_usage_bytes(work_dir / "vendor"),
-                "error": (stderr.strip().splitlines()[-20:] if stderr else ["unknown"])
-                + [f"(warm run failed after {len(warm_times)} successful warm runs)"],
-            }
-        warm_times.append(secs)
-    return {
-        "success": True,
-        "cold_seconds": round(cold_seconds, 3),
-        "warm_seconds": [round(t, 3) for t in warm_times],
-        "warm_avg_seconds": round(sum(warm_times) / len(warm_times), 3)
-        if warm_times
-        else None,
-        "warm_min_seconds": round(min(warm_times), 3) if warm_times else None,
-        "warm_max_seconds": round(max(warm_times), 3) if warm_times else None,
-        "packages_installed": count_vendor_packages(work_dir),
-        "disk_bytes": disk_usage_bytes(work_dir / "vendor"),
-        "error": None,
+        "rc": rc,
+        "seconds": round(secs, 3) if rc >= 0 else round(secs, 3),
+        "stderr_tail": (
+            [ln for ln in stderr.strip().splitlines() if ln][-20:]
+            if stderr
+            else []
+        ),
     }
 
 
@@ -294,29 +264,132 @@ def benchmark_tool(
     env: dict[str, str],
     temp_root: Path,
 ) -> dict[str, Any]:
-    """Run cold + warm installs for one tool against a fixture."""
+    """Run cold_no_lock + cold_with_lock + warm installs for one tool.
+
+    Three scenarios, in order:
+      1. `cold_no_lockfile`   — clear cache + delete composer.lock. The
+         tool has to resolve dependencies (no fast path).
+      2. `cold_with_lockfile` — clear cache but KEEP composer.lock
+         (created by scenario 1). The tool's lockfile fast path
+         skips the resolver; only download + extract remain. This is
+         the realistic CI scenario: you `git pull` an unchanged
+         composer.lock and reinstall into a fresh container.
+      3. `warm`               — re-run with a warm archive cache, N
+         times. Mirrors the original benchmark.
+    """
     work_dir = temp_root / f"{tool_name}_work"
+    # Start from a known-clean state every invocation.
+    if work_dir.exists():
+        shutil.rmtree(work_dir, ignore_errors=True)
     work_dir.mkdir(parents=True, exist_ok=True)
     copy_fixture(fixture_dir, work_dir)
 
-    # Clear caches before cold run. We do NOT clear between cold and warm
-    # — warm runs are meant to exercise the cache.
-    print(f"  [{tool_name}] clearing caches...", file=sys.stderr)
-    if tool_name == "tusk":
-        clear_cache_dir(TUSK_CACHE_DIR)
-    else:
-        clear_cache_dir(COMPOSER_CACHE_DIR)
-        clear_cache_dir(COMPOSER_HOME_DIR + "/cache")
+    cmd = tool_command(tool_name)
+    cache_dirs = tool_cache_dirs(tool_name)
+    lockfile = work_dir / "composer.lock"
 
-    print(f"  [{tool_name}] cold run...", file=sys.stderr)
-    if tool_name == "tusk":
-        result = run_tusk(work_dir, env)
-    else:
-        result = run_composer(work_dir, env)
+    result: dict[str, Any] = {
+        "tool": tool_name,
+        "tusk_cache_dir": TUSK_CACHE_DIR,
+        "composer_cache_dir": COMPOSER_CACHE_DIR,
+    }
+    notes: list[str] = []
 
-    result["tool"] = tool_name
-    result["tusk_cache_dir"] = TUSK_CACHE_DIR
-    result["composer_cache_dir"] = COMPOSER_CACHE_DIR
+    # ------------------------------------------------------------------
+    # Scenario 1: cold_no_lockfile (the original "cold" run)
+    # ------------------------------------------------------------------
+    print(
+        f"  [{tool_name}] clearing caches + lockfile (cold_no_lockfile)...",
+        file=sys.stderr,
+    )
+    for c in cache_dirs:
+        clear_cache_dir(c)
+    if lockfile.is_file():
+        lockfile.unlink()
+    # Vendor/ should not exist yet (fresh work_dir), but be defensive.
+    vendor = work_dir / "vendor"
+    if vendor.exists():
+        shutil.rmtree(vendor, ignore_errors=True)
+
+    print(f"  [{tool_name}] cold run (no lockfile)...", file=sys.stderr)
+    cold = run_install(cmd, work_dir, env)
+    cold_no_lock_ok = cold["rc"] == 0
+    result["cold_seconds"] = cold["seconds"] if cold_no_lock_ok else None
+    result["cold_error"] = cold["stderr_tail"] if not cold_no_lock_ok else None
+    if not cold_no_lock_ok:
+        notes.append(
+            f"{tool_name} cold_no_lockfile install FAILED — see tools.{tool_name}.cold_error"
+        )
+
+    # ------------------------------------------------------------------
+    # Scenario 2: cold_with_lockfile (lockfile fast path)
+    # ------------------------------------------------------------------
+    result["cold_with_lockfile_seconds"] = None
+    result["cold_with_lockfile_error"] = None
+    if cold_no_lock_ok and lockfile.is_file():
+        print(
+            f"  [{tool_name}] clearing cache (keeping lockfile)...",
+            file=sys.stderr,
+        )
+        for c in cache_dirs:
+            clear_cache_dir(c)
+        # Vendor/ already populated from scenario 1; the install will
+        # re-extract on top of it, which is what we want to time.
+
+        print(
+            f"  [{tool_name}] cold run (with lockfile)...", file=sys.stderr
+        )
+        cold_lk = run_install(cmd, work_dir, env)
+        cold_lk_ok = cold_lk["rc"] == 0
+        result["cold_with_lockfile_seconds"] = (
+            cold_lk["seconds"] if cold_lk_ok else None
+        )
+        if not cold_lk_ok:
+            result["cold_with_lockfile_error"] = cold_lk["stderr_tail"]
+            notes.append(
+                f"{tool_name} cold_with_lockfile install FAILED — see tools.{tool_name}.cold_with_lockfile_error"
+            )
+    else:
+        notes.append(
+            f"{tool_name} cold_with_lockfile SKIPPED: no composer.lock was created by the cold_no_lockfile run"
+        )
+
+    # ------------------------------------------------------------------
+    # Scenario 3: warm (warm cache, lockfile present)
+    # ------------------------------------------------------------------
+    print(
+        f"  [{tool_name}] warm runs (x{N_WARM_RUNS})...", file=sys.stderr
+    )
+    warm_times: list[float] = []
+    warm_error: list[str] | None = None
+    for _ in range(N_WARM_RUNS):
+        warm = run_install(cmd, work_dir, env)
+        if warm["rc"] == 0:
+            warm_times.append(warm["seconds"])
+        else:
+            warm_error = warm["stderr_tail"]
+            break
+    result["warm_seconds"] = [round(t, 3) for t in warm_times]
+    result["warm_avg_seconds"] = (
+        round(sum(warm_times) / len(warm_times), 3) if warm_times else None
+    )
+    result["warm_min_seconds"] = (
+        round(min(warm_times), 3) if warm_times else None
+    )
+    result["warm_max_seconds"] = (
+        round(max(warm_times), 3) if warm_times else None
+    )
+    if warm_error is not None:
+        notes.append(
+            f"{tool_name} warm install FAILED after {len(warm_times)} successful runs"
+        )
+
+    # Final metadata, captured at the very end so disk_bytes reflects
+    # the final vendor/ layout (which scenario 2 may have re-populated).
+    result["success"] = cold_no_lock_ok
+    result["packages_installed"] = count_vendor_packages(work_dir)
+    result["disk_bytes"] = disk_usage_bytes(work_dir / "vendor")
+    result["notes"] = notes
     return result
 
 
@@ -447,9 +520,26 @@ def main() -> int:
     composer_ok = composer_r.get("success")
     tusk_ok = tusk_r.get("success")
 
-    cold_speedup = (
+    # cold_no_lockfile: classic "cold" — no lockfile, no cache, full
+    # resolver path. Same as the original benchmark.
+    cold_no_lock_speedup = (
         _safe_div(composer_r.get("cold_seconds"), tusk_r.get("cold_seconds"))
         if (composer_ok and tusk_ok)
+        else None
+    )
+    # cold_with_lockfile: the new scenario — lockfile present, archive
+    # cache empty. This is the CI/git-pull fast path.
+    cold_with_lock_speedup = (
+        _safe_div(
+            composer_r.get("cold_with_lockfile_seconds"),
+            tusk_r.get("cold_with_lockfile_seconds"),
+        )
+        if (
+            composer_ok
+            and tusk_ok
+            and composer_r.get("cold_with_lockfile_seconds") is not None
+            and tusk_r.get("cold_with_lockfile_seconds") is not None
+        )
         else None
     )
     warm_speedup_avg = (
@@ -471,12 +561,17 @@ def main() -> int:
 
     notes: list[str] = []
     if not composer_ok:
-        notes.append("composer install FAILED — see tools.composer.error")
+        notes.append("composer install FAILED — see tools.composer.cold_error")
     if not tusk_ok:
-        notes.append("tusk install FAILED — see tools.tusk.error")
+        notes.append("tusk install FAILED — see tools.tusk.cold_error")
+    # Surface per-tool scenario notes too (informational).
+    for tool, r in results["tools"].items():
+        for n in r.get("notes", []):
+            notes.append(f"{tool}: {n}")
 
     results["summary"] = {
-        "cold_speedup": cold_speedup,
+        "cold_no_lockfile_speedup": cold_no_lock_speedup,
+        "cold_with_lockfile_speedup": cold_with_lock_speedup,
         "warm_speedup_avg": warm_speedup_avg,
         "warm_speedup_min": warm_speedup_min,
         "composer_success": composer_ok,

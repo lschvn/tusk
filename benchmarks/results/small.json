@@ -5,62 +5,73 @@
     "cpu_count": "12",
     "cpu_model": "QEMU Virtual CPU version 2.5+",
     "kernel": "6.8.0-124-generic",
-    "memory": "Mem:            23Gi       1,8Gi        15Gi       392Ki       7,0Gi        21Gi",
+    "memory": "Mem:            23Gi       1,9Gi        10Gi       400Ki        11Gi        21Gi",
     "os": "Ubuntu 24.04.4 LTS",
     "php_version": "PHP 8.3.13 (cli) (built: Nov  1 2024 06:38:49) (NTS)\nCopyright (c) The PHP Group\nZend Engine v4.3.13, Copyright (c) Zend Technologies",
-    "tusk_commit": "86aa094fc6bc092114bec6b91493d5a695b0162d",
-    "tusk_commit_short": "86aa094",
+    "tusk_commit": "7a6913b8625f12545472daf49dff7bfafc8e6861",
+    "tusk_commit_short": "7a6913b",
     "tusk_version": "tusk 0.1.0"
   },
   "fixture": "small",
   "fixture_path": "/home/louis/work/tusk/benchmarks/fixtures/small",
   "summary": {
-    "cold_speedup": 0.48,
+    "cold_no_lockfile_speedup": 0.75,
+    "cold_with_lockfile_speedup": 0.97,
     "composer_success": true,
     "notes": [],
     "tusk_success": true,
-    "warm_speedup_avg": 0.14,
-    "warm_speedup_min": 0.12
+    "warm_speedup_avg": 0.01,
+    "warm_speedup_min": 0.01
   },
   "tools": {
     "composer": {
-      "cold_seconds": 0.439,
+      "cold_error": null,
+      "cold_seconds": 0.321,
+      "cold_with_lockfile_error": null,
+      "cold_with_lockfile_seconds": 0.226,
       "composer_cache_dir": "/home/louis/.composer/cache",
       "disk_bytes": 59057,
-      "error": null,
+      "notes": [],
       "packages_installed": 2,
       "success": true,
       "tool": "composer",
       "total_deps_resolved": 2,
       "tusk_cache_dir": "/home/louis/.cache/tusk",
-      "warm_avg_seconds": 0.225,
-      "warm_max_seconds": 0.226,
-      "warm_min_seconds": 0.224,
+      "warm_avg_seconds": 0.228,
+      "warm_max_seconds": 0.237,
+      "warm_min_seconds": 0.222,
       "warm_seconds": [
-        0.226,
-        0.224,
-        0.224
+        0.222,
+        0.237,
+        0.225,
+        0.228,
+        0.23
       ]
     },
     "tusk": {
-      "cold_seconds": 0.212,
+      "cold_error": null,
+      "cold_seconds": 0.241,
+      "cold_with_lockfile_error": null,
+      "cold_with_lockfile_seconds": 0.219,
       "composer_cache_dir": "/home/louis/.composer/cache",
-      "disk_bytes": 9075,
-      "error": null,
+      "disk_bytes": 22619,
+      "notes": [],
       "packages_installed": 2,
       "success": true,
       "tool": "tusk",
       "total_deps_resolved": 2,
       "tusk_cache_dir": "/home/louis/.cache/tusk",
-      "warm_avg_seconds": 0.031,
-      "warm_max_seconds": 0.04,
-      "warm_min_seconds": 0.027,
+      "warm_avg_seconds": 0.003,
+      "warm_max_seconds": 0.004,
+      "warm_min_seconds": 0.003,
       "warm_seconds": [
-        0.027,
-        0.04,
-        0.027
+        0.004,
+        0.003,
+        0.003,
+        0.003,
+        0.003
       ]
     }
   },
-  "warm_runs": 3
+  "warm_runs": 5
 }

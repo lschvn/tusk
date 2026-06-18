@@ -76,8 +76,8 @@ impl<R: Registry> Resolver<R> {
     ) -> Result<Vec<ResolvedDependency>, ResolveError> {
         use futures::stream::{FuturesUnordered, StreamExt};
 
-        const CONCURRENCY: usize = 16;
-        // constraint_sources[pkg_name] = [(constraint_str, requesting_pkg)]
+        const CONCURRENCY: usize = 64; // Matches Bun's max-in-flight HTTP requests
+                                       // constraint_sources[pkg_name] = [(constraint_str, requesting_pkg)]
         let mut constraints: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
         // BFS queue of packages to fetch metadata for
         let mut to_fetch: VecDeque<String> = VecDeque::new();

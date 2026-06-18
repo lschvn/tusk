@@ -74,23 +74,28 @@ impl Installer {
             bytes
         };
 
-        // Extract to vendor/{vendor}/{package}/
+        // Extract to vendor/{vendor}/{package}/ on a blocking thread.
+        // Extraction is CPU-bound (zip decompression) and would otherwise
+        // block the async runtime, serializing all parallel installs.
+        // This is Bun's key trick: use a dedicated thread pool for CPU work.
         let pkg_dir = self.vendor_dir.join(&dep.name);
-
-        // Atomic extract: write to temp dir, then rename
         let temp_dir = pkg_dir.with_extension("tmp_install");
         if temp_dir.exists() {
             std::fs::remove_dir_all(&temp_dir)?;
         }
 
-        extract::extract_zip(&archive_bytes, &temp_dir)
+        // Clone for the rename after extraction
+        let temp_dir_for_rename = temp_dir.clone();
+        tokio::task::spawn_blocking(move || extract::extract_zip(&archive_bytes, &temp_dir))
+            .await
+            .map_err(|e| InstallError::Zip(format!("join error: {e}")))?
             .map_err(|e| InstallError::Zip(e.to_string()))?;
 
-        // Atomic rename
+        // Atomic rename (back on async runtime, fast)
         if pkg_dir.exists() {
             std::fs::remove_dir_all(&pkg_dir)?;
         }
-        std::fs::rename(&temp_dir, &pkg_dir)?;
+        std::fs::rename(&temp_dir_for_rename, &pkg_dir)?;
 
         Ok(())
     }

@@ -87,6 +87,8 @@ impl PackagistClient {
         // (e.g. codeload.github.com) don't return 403 Forbidden.
         let http = reqwest::Client::builder()
             .user_agent("tusk/0.1.0 (+https://github.com/lschvn/tusk)")
+            .pool_max_idle_per_host(64)
+            .tcp_keepalive(std::time::Duration::from_secs(60))
             .build()
             .expect("reqwest client");
         Self {

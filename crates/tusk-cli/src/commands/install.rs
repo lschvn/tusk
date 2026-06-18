@@ -53,8 +53,6 @@ pub async fn run_in_dir(project_dir: &Path, args: InstallArgs) -> Result<()> {
         .packagist_url
         .clone()
         .unwrap_or_else(|| "https://repo.packagist.org".to_string());
-    let registry = PackagistClient::new(&base_url);
-    let resolver = Resolver::new(registry);
 
     let opts = ResolveOptions {
         include_dev: !args.no_dev,
@@ -62,14 +60,32 @@ pub async fn run_in_dir(project_dir: &Path, args: InstallArgs) -> Result<()> {
         prefer_stable: manifest.prefer_stable,
     };
 
-    if !args.quiet {
-        println!("Resolving dependencies...");
-    }
+    // Try the lockfile fast path first. If composer.lock exists and its
+    // content-hash matches the current composer.json's require sections,
+    // skip the resolver entirely — just install the listed packages.
+    let resolved_deps =
+        if let Some(deps) = try_load_from_lockfile(project_dir, &manifest, !args.no_dev)? {
+            if !args.quiet {
+                println!(
+                    "Using lockfile (skipped resolver) — {} packages",
+                    deps.len()
+                );
+            }
+            deps
+        } else {
+            // No valid lockfile — fall back to full resolver
+            let registry = PackagistClient::new(&base_url);
+            let resolver = Resolver::new(registry);
 
-    let resolved_deps = resolver
-        .resolve(manifest.require.clone(), manifest.require_dev.clone(), opts)
-        .await
-        .context("dependency resolution failed")?;
+            if !args.quiet {
+                println!("Resolving dependencies...");
+            }
+
+            resolver
+                .resolve(manifest.require.clone(), manifest.require_dev.clone(), opts)
+                .await
+                .context("dependency resolution failed")?
+        };
 
     if !args.quiet {
         println!("Resolved {} packages", resolved_deps.len());
@@ -275,4 +291,76 @@ fn compute_content_hash(manifest: &ComposerJson) -> String {
             .as_bytes(),
     );
     hasher.digest().to_string()
+}
+
+/// Try to load resolved dependencies from a valid composer.lock.
+///
+/// Returns `Some(deps)` if the lockfile exists and its content-hash matches
+/// the current composer.json's require sections (skips the resolver entirely).
+/// Returns `None` if there's no lockfile, or the hash doesn't match (caller
+/// must re-resolve and rewrite the lockfile).
+///
+/// This is the "frozen lockfile" fast path — Bun's headline cold-cache
+/// optimization. For projects with a committed lockfile, cold install time
+/// drops to the download phase only.
+fn try_load_from_lockfile(
+    project_dir: &Path,
+    manifest: &ComposerJson,
+    include_dev: bool,
+) -> anyhow::Result<Option<Vec<tusk_resolver::ResolvedDependency>>> {
+    use tusk_manifest::ComposerLock;
+
+    let lock_path = project_dir.join("composer.lock");
+    if !lock_path.exists() {
+        return Ok(None);
+    }
+    let content = std::fs::read_to_string(&lock_path)
+        .map_err(|e| anyhow::anyhow!("reading composer.lock: {e}"))?;
+    let lock = ComposerLock::deserialize_str(&content)
+        .map_err(|e| anyhow::anyhow!("parsing composer.lock: {e}"))?;
+
+    // Verify content-hash matches
+    let current_hash = compute_content_hash(manifest);
+    if lock.content_hash.as_deref() != Some(current_hash.as_str()) {
+        // Hash mismatch — manifest changed, must re-resolve
+        return Ok(None);
+    }
+
+    // Convert locked packages to ResolvedDependency
+    let mut resolved = Vec::new();
+    for pkg in &lock.packages {
+        if let Some(dep) = locked_to_resolved(pkg) {
+            resolved.push(dep);
+        }
+    }
+    if include_dev {
+        for pkg in &lock.packages_dev {
+            if let Some(dep) = locked_to_resolved(pkg) {
+                resolved.push(dep);
+            }
+        }
+    }
+    if resolved.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(resolved))
+}
+
+/// Convert a `LockedPackage` into a `ResolvedDependency`.
+///
+/// Returns None if the version string can't be parsed (we'd need to re-resolve).
+fn locked_to_resolved(
+    pkg: &tusk_manifest::LockedPackage,
+) -> Option<tusk_resolver::ResolvedDependency> {
+    let version = tusk_semver::Version::parse(&pkg.version).ok()?;
+    Some(tusk_resolver::ResolvedDependency {
+        name: pkg.name.clone(),
+        version,
+        require: pkg.require.clone(),
+        dist: tusk_registry::DistRef {
+            url: pkg.dist.url.clone(),
+            shasum: pkg.dist.shasum.clone(),
+            r#type: pkg.dist.r#type.clone(),
+        },
+    })
 }

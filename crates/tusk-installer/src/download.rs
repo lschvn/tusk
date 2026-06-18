@@ -29,6 +29,8 @@ impl Downloader {
         Self {
             client: reqwest::Client::builder()
                 .user_agent("tusk/0.1.0 (+https://github.com/lschvn/tusk)")
+                .pool_max_idle_per_host(64) // Bun uses 64 max-idle-conns-per-host
+                .tcp_keepalive(std::time::Duration::from_secs(60))
                 .build()
                 .expect("reqwest client"),
         }

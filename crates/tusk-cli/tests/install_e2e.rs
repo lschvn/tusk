@@ -178,3 +178,176 @@ async fn tusk_install_exits_nonzero_on_missing_composer_json() {
         .failure()
         .stderr(predicate::str::contains("composer.json"));
 }
+
+/// Verify the lockfile fast path: if composer.lock exists and its
+/// content-hash matches composer.json, the CLI should skip the resolver
+/// and use the lockfile's resolved packages directly.
+///
+/// **Unambiguous design:**
+///
+/// 1. Start a mock server that serves both `/p2/acme/foo.json` (metadata)
+///    and the zip archive.
+/// 2. Run a first install — this creates `composer.lock` whose
+///    `dist.url` points at this same server.
+/// 3. `server.reset()` and re-mount only the zip endpoint. Mount a
+///    `/p2/` mock that **rejects** with HTTP 500.
+/// 4. Wipe the **entire** archive cache (`TUSK_CACHE_DIR`) so the
+///    second install must re-download from the lockfile URL.
+/// 5. Run a second install.
+///    - **Fast path works** → no resolver call, no `/p2/` request,
+///      zip downloads from the (still-served) lockfile URL → success.
+///    - **Fast path broken** → resolver hits `/p2/`, gets HTTP 500,
+///      install fails with a network/resolve error.
+///
+/// This test also records the `content-hash` value, the lockfile's
+/// `dist.url`, and timings for both installs.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn tusk_install_uses_lockfile_fast_path() {
+    use std::time::Instant;
+
+    // Same fixture as the end-to-end test
+    let (zip_bytes, sha1) = make_package_zip();
+    let server = wiremock::MockServer::start().await;
+
+    // --- Mock setup for the FIRST install ---
+    let dist_url = format!("{}/acme/foo-1.0.0.zip", server.uri());
+    let metadata_json = serde_json::json!({
+        "packages": {
+            "acme/foo": [{
+                "version": "1.0.0",
+                "dist": { "url": dist_url.clone(), "shasum": sha1, "type": "zip" },
+                "require": {}
+            }]
+        }
+    });
+
+    // Metadata endpoint — `expect(1)` means it must be called exactly once
+    // (the first install). After that, the mock is "satisfied" and further
+    // calls would 404, which is what we want for the second install.
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/p2/acme/foo.json"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(metadata_json))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    // Zip endpoint — no `expect`, always available.
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/acme/foo-1.0.0.zip"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_raw(zip_bytes.clone(), "application/zip"),
+        )
+        .mount(&server)
+        .await;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let project_dir = tmp.path();
+    std::fs::write(
+        project_dir.join("composer.json"),
+        r#"{
+    "name": "test/project",
+    "require": { "acme/foo": "^1.0" }
+}"#,
+    )
+    .unwrap();
+    let cache_dir = project_dir.join(".tusk-cache");
+    std::fs::create_dir_all(&cache_dir).unwrap();
+
+    // === First install (resolver path) ===
+    let t1 = Instant::now();
+    assert_cmd::Command::cargo_bin("tusk")
+        .expect("cargo_bin should resolve")
+        .current_dir(project_dir)
+        .env("TUSK_CACHE_DIR", cache_dir.to_str().unwrap())
+        .arg("install")
+        .arg("--packagist-url")
+        .arg(server.uri())
+        .assert()
+        .success();
+    let first_elapsed = t1.elapsed();
+
+    let lock_path = project_dir.join("composer.lock");
+    assert!(lock_path.exists(), "composer.lock must be created");
+
+    // Read the content-hash and the dist URL from the lockfile.
+    let lock_content = std::fs::read_to_string(&lock_path).unwrap();
+    let lock_json: serde_json::Value = serde_json::from_str(&lock_content).unwrap();
+    let stored_content_hash = lock_json["content-hash"]
+        .as_str()
+        .expect("content-hash must be present in lockfile")
+        .to_string();
+    let lockfile_dist_url = lock_json["packages"][0]["dist"]["url"]
+        .as_str()
+        .expect("packages[0].dist.url must be present")
+        .to_string();
+    eprintln!("[diag] content-hash = {stored_content_hash}");
+    eprintln!("[diag] lockfile dist.url = {lockfile_dist_url}");
+    eprintln!("[diag] first install elapsed = {first_elapsed:?}");
+
+    // === Prepare for the second install ===
+    // Wipe the entire archive cache so the second install must re-download.
+    std::fs::remove_dir_all(&cache_dir).unwrap();
+    std::fs::create_dir_all(&cache_dir).unwrap();
+
+    // Reset the server: all mocks are gone. Re-mount only the zip
+    // endpoint, and mount a /p2/ mock that REJECTS with HTTP 500.
+    server.reset().await;
+
+    // Zip endpoint — still served, so the lockfile URL works.
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/acme/foo-1.0.0.zip"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_raw(zip_bytes.clone(), "application/zip"),
+        )
+        .mount(&server)
+        .await;
+
+    // /p2/ endpoint — REJECTS with 500. If the resolver runs, it will
+    // hit this and fail. The fast path skips the resolver entirely.
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/p2/acme/foo.json"))
+        .respond_with(wiremock::ResponseTemplate::new(500))
+        .expect(0) // must NOT be called — proves fast path
+        .named("p2-reject-must-not-be-called")
+        .mount(&server)
+        .await;
+
+    // === Second install (fast path) ===
+    let t2 = Instant::now();
+    let result = assert_cmd::Command::cargo_bin("tusk")
+        .expect("cargo_bin should resolve")
+        .current_dir(project_dir)
+        .env("TUSK_CACHE_DIR", cache_dir.to_str().unwrap())
+        .arg("install")
+        .arg("--packagist-url")
+        .arg(server.uri())
+        .assert()
+        .success(); // fast path → no resolver → no /p2/ → install succeeds
+    let second_elapsed = t2.elapsed();
+
+    let output = result.get_output();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // The CLI should report it used the lockfile.
+    assert!(
+        stdout.contains("Using lockfile") || stderr.contains("Using lockfile"),
+        "expected 'Using lockfile' message, got stdout={stdout:?}, stderr={stderr:?}"
+    );
+
+    // Wiremock verification: p2-reject must NOT have been called.
+    // This is the definitive proof: if the resolver ran, it would have
+    // hit /p2/ and gotten a 500, failing the install. The fact that
+    // the install succeeded means the resolver never ran.
+    server.verify().await; // panics if p2-reject.expect(0) was violated
+
+    eprintln!("[diag] second install elapsed = {second_elapsed:?}");
+    let speedup = first_elapsed.as_secs_f64() / second_elapsed.as_secs_f64().max(0.001);
+    eprintln!("[diag] speedup = {speedup:.2}x");
+
+    // Sanity: the install actually produced a vendor/ directory.
+    let vendor = project_dir.join("vendor");
+    assert!(vendor.join("acme/foo/composer.json").exists());
+
+    // Suppress unused warning for the named mock reference.
+}
