@@ -19,6 +19,10 @@
 # Supported platforms (downloaded as prebuilt binaries):
 #   - Linux  x86_64
 #
+# Other platforms (macOS, Linux arm64) are detected but will print a message
+# pointing to the build-from-source instructions, since prebuilt binaries for
+# them are not yet published.
+#
 # On other platforms, or if no binary is found, the installer prints a
 # message pointing to the build-from-source instructions.
 #

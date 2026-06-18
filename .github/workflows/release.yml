@@ -62,9 +62,6 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             archive: tusk-x86_64-unknown-linux-gnu
-          - target: x86_64-apple-darwin
-            os: macos-latest
-            archive: tusk-x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -100,15 +97,7 @@ jobs:
       - name: Build release binary
         run: cargo build --release --bin tusk --target ${{ matrix.target }}
 
-      - name: Strip binary (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          BIN="target/${{ matrix.target }}/release/tusk"
-          strip "${BIN}"
-          ls -la "${BIN}"
-
-      - name: Strip binary (macOS)
-        if: runner.os == 'macOS'
+      - name: Strip binary
         run: |
           BIN="target/${{ matrix.target }}/release/tusk"
           strip "${BIN}"
